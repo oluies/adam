@@ -16,12 +16,25 @@ milestone=$3
 # get current branch
 branch=$(git status -bs | awk '{ print $2 }' | awk -F'.' '{ print $1 }' | head -n 1)
 
-# update changelog per Github milestone
-echo "## Version ${release}" > CHANGES.new
-gh issue list --repo bigdatagenomics/adam --state closed --milestone "${milestone}" --limit 1000 \
-  --json number,title,url --template '{{range .}}* {{.title}} [\#{{.number}}]({{.url}}){{"\n"}}{{end}}' >> CHANGES.new
-echo >> CHANGES.new
-cat CHANGES.md >> CHANGES.new
+# update changelog per Github milestone, in the existing CHANGES.md format
+milestone_title=$(gh api repos/bigdatagenomics/adam/milestones/${milestone} --jq .title)
+{
+  echo "# ADAM Changelog #"
+  echo
+  echo "### Version ${release} ###"
+  echo
+  echo "**Closed issues:**"
+  echo
+  gh issue list --repo bigdatagenomics/adam --state closed --milestone "${milestone_title}" --limit 1000 \
+    --json number,title,url --template '{{range .}} - {{.title}} [\#{{.number}}]({{.url}}){{"\n"}}{{end}}'
+  echo
+  echo "**Merged and closed pull requests:**"
+  echo
+  gh pr list --repo bigdatagenomics/adam --state merged --search "milestone:\"${milestone_title}\"" --limit 1000 \
+    --json number,title,url,author --template '{{range .}} - {{.title}} [\#{{.number}}]({{.url}}) ([{{.author.login}}](https://github.com/{{.author.login}})){{"\n"}}{{end}}'
+  echo
+  tail -n +2 CHANGES.md
+} > CHANGES.new
 mv CHANGES.new CHANGES.md
 git commit -a -m "Modifying changelog."
 

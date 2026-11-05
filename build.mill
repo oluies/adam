@@ -248,6 +248,9 @@ object `adam-assembly` extends AdamModule {
   /** A plain jar for spark-submit, without a launcher script prepended. */
   def prependShellScript = ""
 
+  /** Publish the überjar as this module's main artifact, as the Maven shade plugin did. */
+  def jar = Task { assembly() }
+
   def assemblyRules = super.assemblyRules ++ Seq(
     Assembly.Rule.ExcludePattern("META-INF/.*\\.SF"),
     Assembly.Rule.ExcludePattern("META-INF/.*\\.DSA"),
@@ -256,7 +259,20 @@ object `adam-assembly` extends AdamModule {
 }
 
 /** Binary distribution: tar.gz and zip with the assembly jar, launcher scripts and scaladocs. */
-object `adam-distribution` extends Module {
+object `adam-distribution` extends JavaModule with PublishModule {
+  def artifactName = s"adam-distribution-${Versions.sparkMajor}_2.13"
+  def publishVersion = Versions.adam
+  def pomSettings = `adam-core`.pomSettings()
+
+  /** Attach the archives to the release as adam-distribution-...-bin.tar.gz/zip. */
+  def extraPublish = Task {
+    dist().map(archive => {
+      val name = archive.path.last
+      val ext = if (name.endsWith(".tar.gz")) "tar.gz" else "zip"
+      PublishInfo(archive, classifier = Some("bin"), ext = ext, ivyConfig = "compile")
+    })
+  }
+
   def docFiles = Task.Sources(
     BuildCtx.workspaceRoot / "LICENSE.txt",
     BuildCtx.workspaceRoot / "CHANGES.md",

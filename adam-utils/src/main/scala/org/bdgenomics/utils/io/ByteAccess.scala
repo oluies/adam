@@ -44,6 +44,9 @@ trait ByteAccess {
     try {
       while (totalBytesRead < length) {
         val bytesRead = is.read(buffer, totalBytesRead, length - totalBytesRead)
+        if (bytesRead < 0) {
+          return java.util.Arrays.copyOf(buffer, totalBytesRead)
+        }
         totalBytesRead += bytesRead
       }
       buffer

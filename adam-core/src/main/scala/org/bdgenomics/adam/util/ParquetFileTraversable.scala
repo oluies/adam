@@ -61,13 +61,52 @@ class ParquetFileTraversable[T <: IndexedRecord](sc: SparkContext, file: Path) e
     paths
   }
 
+  private def openReader(path: Path) =
+    AvroParquetReader.builder[T](HadoopInputFile.fromPath(path, sc.hadoopConfiguration)).build()
+
   /**
-   * Streams the records of each Parquet part file in turn. Each reader is
-   * closed once its file has been read to the end.
+   * Runs a for loop over each record in the file, and applies a function.
+   * Each reader is closed when its file is done or the function throws.
+   *
+   * @param f The function to apply to each record.
+   */
+  override def foreach[U](f: T => U): Unit = {
+    paths.foreach(path => {
+      val parquetReader = openReader(path)
+      try {
+        var record = parquetReader.read()
+        while (record != null) {
+          f(record)
+          record = parquetReader.read()
+        }
+      } finally {
+        parquetReader.close()
+      }
+    })
+  }
+
+  /**
+   * @return The first record, read with a reader that is closed before returning.
+   */
+  override def headOption: Option[T] = {
+    paths.iterator.map(path => {
+      val parquetReader = openReader(path)
+      try {
+        Option(parquetReader.read())
+      } finally {
+        parquetReader.close()
+      }
+    }).collectFirst { case Some(record) => record }
+  }
+
+  /**
+   * Streams the records of each Parquet part file in turn. A reader is only
+   * closed once its file has been read to the end, so prefer foreach or
+   * headOption, which always close their readers.
    */
   override def iterator: Iterator[T] = {
     paths.iterator.flatMap(path => {
-      val parquetReader = AvroParquetReader.builder[T](HadoopInputFile.fromPath(path, sc.hadoopConfiguration)).build()
+      val parquetReader = openReader(path)
       Iterator.continually(parquetReader.read())
         .takeWhile(record => {
           if (record == null) parquetReader.close()
