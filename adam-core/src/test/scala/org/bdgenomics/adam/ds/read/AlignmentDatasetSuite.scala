@@ -62,7 +62,7 @@ import org.bdgenomics.adam.sql.{
 import org.bdgenomics.adam.util.{ ADAMFunSuite, AttributeUtils, ManualRegionPartitioner }
 import org.bdgenomics.formats.avro._
 import org.seqdoop.hadoop_bam.{ CRAMInputFormat, SAMFormat }
-import scala.collection.JavaConversions._
+import scala.jdk.CollectionConverters._
 import scala.util.Random
 
 private object SequenceIndexWithReadOrdering extends Ordering[((Int, Long), (Alignment, Int))] {
@@ -681,7 +681,7 @@ class AlignmentDatasetSuite extends ADAMFunSuite {
     testMetadata(rrdd)
     val rdd = rrdd.transformDataset(ds => {
       // all reads are on 1, so this is effectively a no-op
-      import ds.sqlContext.implicits._
+      import ds.sparkSession.implicits._
       val df = ds.toDF()
       df.where(df("referenceName") === "1")
         .as[AlignmentProduct]
@@ -732,7 +732,7 @@ class AlignmentDatasetSuite extends ADAMFunSuite {
 
     //test explicit transform to alignment Product
     val rdd = rrdd.transformDataset(ds => {
-      import ds.sqlContext.implicits._
+      import ds.sparkSession.implicits._
       val df = ds.toDF()
       df.as[AlignmentProduct]
     })
@@ -985,9 +985,9 @@ class AlignmentDatasetSuite extends ADAMFunSuite {
     val records = ardd.rdd.count
 
     val pipedRdd = ardd.pipe[Alignment, AlignmentProduct, AlignmentDataset, SAMInFormatter](
-      Seq("tee", "/dev/null"),
-      (List.empty[String]: java.util.List[String]),
-      (Map.empty[String, String]: java.util.Map[String, String]),
+      List("tee", "/dev/null").asJava,
+      List.empty[String].asJava,
+      Map.empty[String, String].asJava,
       0,
       classOf[SAMInFormatter],
       new AnySAMOutFormatter,

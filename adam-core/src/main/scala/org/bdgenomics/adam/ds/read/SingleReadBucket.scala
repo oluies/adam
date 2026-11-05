@@ -26,7 +26,7 @@ import org.bdgenomics.formats.avro.{
   Fragment
 }
 import scala.annotation.tailrec
-import scala.collection.JavaConversions._
+import scala.jdk.CollectionConverters._
 import scala.collection.mutable.ListBuffer
 
 private class FragmentIterator(
@@ -103,7 +103,7 @@ private[read] object SingleReadBucket {
   }
 
   def apply(fragment: Fragment): SingleReadBucket = {
-    fromGroupedReads(fragment.getAlignments.toIterable)
+    fromGroupedReads(fragment.getAlignments.asScala.toIterable)
   }
 }
 
@@ -142,7 +142,7 @@ private[adam] case class SingleReadBucket(
     // start building fragment
     val builder = Fragment.newBuilder()
       .setName(unionReads.head.getReadName)
-      .setAlignments(seqAsJavaList(allReads.toSeq))
+      .setAlignments(allReads.toSeq.asJava)
 
     // is an insert size defined for this fragment?
     primaryMapped.headOption

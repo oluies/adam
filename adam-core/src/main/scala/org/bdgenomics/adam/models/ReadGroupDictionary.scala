@@ -20,7 +20,7 @@ package org.bdgenomics.adam.models
 import htsjdk.samtools.{ SAMFileHeader, SAMReadGroupRecord }
 import java.util.Date
 import org.bdgenomics.formats.avro.{ ReadGroup => ReadGroupMetadata, Sample }
-import scala.collection.JavaConversions._
+import scala.jdk.CollectionConverters._
 
 /**
  * Singleton object for creating dictionaries of read groups.
@@ -35,7 +35,7 @@ object ReadGroupDictionary {
    */
   def fromSAMHeader(header: SAMFileHeader): ReadGroupDictionary = {
     val readGroups = header.getReadGroups
-    new ReadGroupDictionary(readGroups.map(ReadGroup(_)))
+    new ReadGroupDictionary(readGroups.asScala.map(ReadGroup(_)).toSeq)
   }
 
   /**

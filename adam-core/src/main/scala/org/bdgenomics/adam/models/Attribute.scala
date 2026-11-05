@@ -33,9 +33,9 @@ package org.bdgenomics.adam.models
 case class Attribute(tag: String, tagType: TagType.Value, value: Any) {
 
   override def toString: String = {
-    val byteSequenceTypes = Array(TagType.NumericByteSequence, TagType.NumericUnsignedByteSequence)
-    val intSequenceTypes = Array(TagType.NumericIntSequence, TagType.NumericUnsignedIntSequence)
-    val shortSequenceTypes = Array(TagType.NumericShortSequence, TagType.NumericUnsignedShortSequence)
+    val byteSequenceTypes = Array[TagType.Value](TagType.NumericByteSequence, TagType.NumericUnsignedByteSequence)
+    val intSequenceTypes = Array[TagType.Value](TagType.NumericIntSequence, TagType.NumericUnsignedIntSequence)
+    val shortSequenceTypes = Array[TagType.Value](TagType.NumericShortSequence, TagType.NumericUnsignedShortSequence)
     val sb = new StringBuilder
     sb.append(tag)
     sb.append(":")

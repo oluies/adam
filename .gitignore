@@ -1,6 +1,10 @@
 .idea
 *.iml
 target
+out
+.bsp
+.metals
+.bloop
 adam*.jar
 build
 *~

@@ -17,6 +17,7 @@
  */
 package org.bdgenomics.adam.ds
 
+import scala.jdk.CollectionConverters._
 import htsjdk.samtools.{
   SAMFormatException,
   SAMProgramRecord,
@@ -214,7 +215,7 @@ class ADAMContextSuite extends ADAMFunSuite {
     assert(variant.getNames.isEmpty)
     assert(variant.getFiltersApplied === true)
     assert(variant.getFiltersPassed === false)
-    assert(variant.getFiltersFailed.contains("IndelQD"))
+    assert(variant.getFiltersFailed.asScala.contains("IndelQD"))
 
     assert(vc.genotypes.size === 3)
 
@@ -613,7 +614,7 @@ class ADAMContextSuite extends ADAMFunSuite {
 
         val te = v.getAnnotation.getTranscriptEffects.get(0)
         assert(te.getAlternateAllele === "C")
-        assert(te.getEffects.contains("downstream_gene_variant"))
+        assert(te.getEffects.asScala.contains("downstream_gene_variant"))
         assert(te.getGeneName === "WASH7P")
         assert(te.getGeneId === "ENSG00000227232")
         assert(te.getFeatureType === "transcript")
@@ -833,7 +834,7 @@ class ADAMContextSuite extends ADAMFunSuite {
     assert(reloaded.references.isEmpty)
     assert(reloaded.readGroups.isEmpty)
     assert(reloaded.processingSteps.isEmpty)
-    assert(reloaded.rdd.collect().deep == alignments.rdd.collect().deep)
+    assert(reloaded.rdd.collect().toSeq == alignments.rdd.collect().toSeq)
   }
 
   sparkTest("load features from data frame") {
@@ -845,7 +846,7 @@ class ADAMContextSuite extends ADAMFunSuite {
     val reloaded = sc.loadFeatures(df)
     assert(reloaded.references.isEmpty)
     assert(reloaded.samples.isEmpty)
-    assert(reloaded.rdd.collect().deep == features.rdd.collect().deep)
+    assert(reloaded.rdd.collect().toSeq == features.rdd.collect().toSeq)
   }
 
   sparkTest("load fragments from data frame") {
@@ -858,7 +859,7 @@ class ADAMContextSuite extends ADAMFunSuite {
     assert(reloaded.references.isEmpty)
     assert(reloaded.readGroups.isEmpty)
     assert(reloaded.processingSteps.isEmpty)
-    assert(reloaded.rdd.collect().deep == fragments.rdd.collect().deep)
+    assert(reloaded.rdd.collect().toSeq == fragments.rdd.collect().toSeq)
   }
 
   sparkTest("load genotypes from data frame with default header lines") {
@@ -871,7 +872,7 @@ class ADAMContextSuite extends ADAMFunSuite {
     assert(reloaded.references.isEmpty)
     assert(reloaded.samples.isEmpty)
     assert(reloaded.headerLines === DefaultHeaderLines.allHeaderLines)
-    assert(reloaded.rdd.collect().deep == genotypes.rdd.collect().deep)
+    assert(reloaded.rdd.collect().toSeq == genotypes.rdd.collect().toSeq)
   }
 
   sparkTest("load genotypes from data frame with empty header lines") {
@@ -884,7 +885,7 @@ class ADAMContextSuite extends ADAMFunSuite {
     assert(reloaded.references == genotypes.references)
     assert(reloaded.samples == genotypes.samples)
     assert(reloaded.headerLines.isEmpty)
-    assert(reloaded.rdd.collect().deep == genotypes.rdd.collect().deep)
+    assert(reloaded.rdd.collect().toSeq == genotypes.rdd.collect().toSeq)
   }
 
   sparkTest("load reads from data frame") {
@@ -895,7 +896,7 @@ class ADAMContextSuite extends ADAMFunSuite {
     val df = spark.read.parquet(outputDir)
     val reloaded = sc.loadReads(df)
     assert(reloaded.references.isEmpty)
-    assert(reloaded.rdd.collect().deep == reads.rdd.collect().deep)
+    assert(reloaded.rdd.collect().toSeq == reads.rdd.collect().toSeq)
   }
 
   sparkTest("load sequences from data frame") {
@@ -906,7 +907,7 @@ class ADAMContextSuite extends ADAMFunSuite {
     val df = spark.read.parquet(outputDir)
     val reloaded = sc.loadSequences(df)
     assert(reloaded.references.isEmpty)
-    assert(reloaded.rdd.collect().deep == sequences.rdd.collect().deep)
+    assert(reloaded.rdd.collect().toSeq == sequences.rdd.collect().toSeq)
   }
 
   sparkTest("load slices from data frame") {
@@ -917,7 +918,7 @@ class ADAMContextSuite extends ADAMFunSuite {
     val df = spark.read.parquet(outputDir)
     val reloaded = sc.loadSlices(df)
     assert(reloaded.references.isEmpty)
-    assert(reloaded.rdd.collect().deep == slices.rdd.collect().deep)
+    assert(reloaded.rdd.collect().toSeq == slices.rdd.collect().toSeq)
   }
 
   sparkTest("load variant contexts from data frame with default header lines") {
@@ -956,7 +957,7 @@ class ADAMContextSuite extends ADAMFunSuite {
     val reloaded = sc.loadVariants(df)
     assert(reloaded.references.isEmpty)
     assert(reloaded.headerLines === DefaultHeaderLines.allHeaderLines)
-    assert(reloaded.rdd.collect().deep == variants.rdd.collect().deep)
+    assert(reloaded.rdd.collect().toSeq == variants.rdd.collect().toSeq)
   }
 
   sparkTest("load variants from data frame with empty header lines") {
@@ -968,7 +969,7 @@ class ADAMContextSuite extends ADAMFunSuite {
     val reloaded = sc.loadVariants(df, variants.references, headerLines = Seq.empty)
     assert(reloaded.references == variants.references)
     assert(reloaded.headerLines.isEmpty)
-    assert(reloaded.rdd.collect().deep == variants.rdd.collect().deep)
+    assert(reloaded.rdd.collect().toSeq == variants.rdd.collect().toSeq)
   }
 
   sparkTest("load alignments with metadata from data frame") {
@@ -981,7 +982,7 @@ class ADAMContextSuite extends ADAMFunSuite {
     assert(reloaded.references == alignments.references)
     assert(reloaded.readGroups == alignments.readGroups)
     assert(reloaded.processingSteps == alignments.processingSteps)
-    assert(reloaded.rdd.collect().deep == alignments.rdd.collect().deep)
+    assert(reloaded.rdd.collect().toSeq == alignments.rdd.collect().toSeq)
   }
 
   sparkTest("load features with metadata from data frame") {
@@ -993,7 +994,7 @@ class ADAMContextSuite extends ADAMFunSuite {
     val reloaded = sc.loadFeatures(df, outputDir)
     assert(reloaded.references == features.references)
     assert(reloaded.samples.isEmpty)
-    assert(reloaded.rdd.collect().deep == features.rdd.collect().deep)
+    assert(reloaded.rdd.collect().toSeq == features.rdd.collect().toSeq)
   }
 
   sparkTest("load fragments with metadata from data frame") {
@@ -1006,7 +1007,7 @@ class ADAMContextSuite extends ADAMFunSuite {
     assert(reloaded.references == fragments.references)
     assert(reloaded.readGroups == fragments.readGroups)
     assert(reloaded.processingSteps == fragments.processingSteps)
-    assert(reloaded.rdd.collect().deep == fragments.rdd.collect().deep)
+    assert(reloaded.rdd.collect().toSeq == fragments.rdd.collect().toSeq)
   }
 
   sparkTest("load genotypes with metadata from data frame") {
@@ -1019,7 +1020,7 @@ class ADAMContextSuite extends ADAMFunSuite {
     assert(reloaded.references == gts.references)
     assert(reloaded.headerLines.toSet == gts.headerLines.toSet)
     assert(reloaded.samples == gts.samples)
-    assert(reloaded.rdd.collect().deep == gts.rdd.collect().deep)
+    assert(reloaded.rdd.collect().toSeq == gts.rdd.collect().toSeq)
   }
 
   sparkTest("load variant contexts with metadata from data frame") {
@@ -1044,7 +1045,7 @@ class ADAMContextSuite extends ADAMFunSuite {
     val reloaded = sc.loadVariants(df, outputDir)
     assert(reloaded.references == variants.references)
     assert(reloaded.headerLines.toSet == variants.headerLines.toSet)
-    assert(reloaded.rdd.collect().deep == variants.rdd.collect().deep)
+    assert(reloaded.rdd.collect().toSeq == variants.rdd.collect().toSeq)
   }
 
   sparkTest("read a fasta file with short sequences as sequences") {

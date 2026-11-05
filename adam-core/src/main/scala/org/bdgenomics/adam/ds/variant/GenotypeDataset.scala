@@ -55,7 +55,7 @@ import org.bdgenomics.formats.avro.{
   Variant,
   VariantAnnotation
 }
-import scala.collection.JavaConversions._
+import scala.jdk.CollectionConverters._
 import scala.reflect.ClassTag
 import scala.reflect.runtime.universe._
 
@@ -343,7 +343,7 @@ sealed abstract class GenotypeDataset extends MultisampleAvroGenomicDataset[Geno
    */
   def saveVcfHeaders(filePath: String): Unit = {
     // write vcf headers to file
-    VCFHeaderUtils.write(new VCFHeader(headerLines.toSet),
+    VCFHeaderUtils.write(new VCFHeader(headerLines.toSet.asJava),
       new Path("%s/_header".format(filePath)),
       rdd.context.hadoopConfiguration,
       false,
@@ -536,7 +536,7 @@ sealed abstract class GenotypeDataset extends MultisampleAvroGenomicDataset[Geno
    * return GenotypeDataset filtered by one or more samples.
    */
   def filterToSamples(sampleIds: java.util.List[String]): GenotypeDataset = {
-    filterToSamples(asScalaBuffer(sampleIds))
+    filterToSamples(sampleIds.asScala.toSeq)
   }
 
   /**
@@ -555,7 +555,7 @@ sealed abstract class GenotypeDataset extends MultisampleAvroGenomicDataset[Geno
    * @return GenotypeDataset filtered to remove genotypes containing NO_CALL alleles.
    */
   def filterNoCalls(): GenotypeDataset = {
-    transform((rdd: RDD[Genotype]) => rdd.filter(g => !g.getAlleles.contains(GenotypeAllele.NO_CALL)))
+    transform((rdd: RDD[Genotype]) => rdd.filter(g => !g.getAlleles.asScala.contains(GenotypeAllele.NO_CALL)))
   }
 
   /**

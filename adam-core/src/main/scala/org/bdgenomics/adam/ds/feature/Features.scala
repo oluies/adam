@@ -18,8 +18,8 @@
 package org.bdgenomics.adam.ds.feature
 
 import org.bdgenomics.formats.avro.{ Dbxref, Feature, OntologyTerm, Strand }
-import scala.collection.JavaConversions._
-import scala.collection.mutable.{ ArrayBuffer, HashMap, MutableList }
+import scala.jdk.CollectionConverters._
+import scala.collection.mutable.{ ArrayBuffer, LinkedHashMap, ListBuffer }
 import scala.math.{ max, min }
 
 /**
@@ -129,16 +129,16 @@ private[feature] object Features {
    */
   def assignAttributes(attributes: Seq[(String, String)], f: Feature.Builder): Feature.Builder = {
     // initialize empty builder list fields
-    val aliases = new MutableList[String]()
-    val notes = new MutableList[String]()
-    val parentIds = new MutableList[String]()
-    val dbxrefs = new MutableList[Dbxref]()
-    val ontologyTerms = new MutableList[OntologyTerm]()
+    val aliases = new ListBuffer[String]()
+    val notes = new ListBuffer[String]()
+    val parentIds = new ListBuffer[String]()
+    val dbxrefs = new ListBuffer[Dbxref]()
+    val ontologyTerms = new ListBuffer[OntologyTerm]()
 
     // set id, name, target, gap, derivesFrom, and isCircular
     // and populate aliases, notes, parentIds, dbxrefs, and ontologyTerms
     // from attributes if specified
-    val remaining = new HashMap[String, String]
+    val remaining = new LinkedHashMap[String, String]
     attributes.foreach(entry =>
       entry._1 match {
         // reserved keys in GFF3 specification
@@ -166,15 +166,15 @@ private[feature] object Features {
     )
 
     // set list fields if non-empty
-    if (aliases.nonEmpty) f.setAliases(aliases)
-    if (notes.nonEmpty) f.setNotes(notes)
-    if (parentIds.nonEmpty) f.setParentIds(parentIds)
-    if (dbxrefs.nonEmpty) f.setDbxrefs(dbxrefs)
-    if (ontologyTerms.nonEmpty) f.setOntologyTerms(ontologyTerms)
+    if (aliases.nonEmpty) f.setAliases(aliases.asJava)
+    if (notes.nonEmpty) f.setNotes(notes.asJava)
+    if (parentIds.nonEmpty) f.setParentIds(parentIds.asJava)
+    if (dbxrefs.nonEmpty) f.setDbxrefs(dbxrefs.asJava)
+    if (ontologyTerms.nonEmpty) f.setOntologyTerms(ontologyTerms.asJava)
 
     // set remaining attributes if non-empty;
     // any duplicate keys are lost at this point, last one in wins
-    if (remaining.nonEmpty) f.setAttributes(remaining)
+    if (remaining.nonEmpty) f.setAttributes(remaining.asJava)
 
     f
   }
@@ -203,12 +203,13 @@ private[feature] object Features {
     Option(feature.getExonId).foreach(attrs += Tuple2("exon_id", _))
     Option(feature.getProteinId).foreach(attrs += Tuple2("protein_id", _))
     Option(feature.getSampleId).foreach(attrs += Tuple2("sampleId", _))
-    for (alias <- feature.getAliases) attrs += Tuple2("Alias", alias)
-    for (note <- feature.getNotes) attrs += Tuple2("Note", note)
-    for (parentId <- feature.getParentIds) attrs += Tuple2("Parent", parentId)
-    for (dbxref <- feature.getDbxrefs) attrs += Tuple2("Dbxref", asString(dbxref))
-    for (ontologyTerm <- feature.getOntologyTerms) attrs += Tuple2("Ontology_term", asString(ontologyTerm))
-    attrs ++= feature.getAttributes.toSeq
+    for (alias <- feature.getAliases.asScala) attrs += Tuple2("Alias", alias)
+    for (note <- feature.getNotes.asScala) attrs += Tuple2("Note", note)
+    for (parentId <- feature.getParentIds.asScala) attrs += Tuple2("Parent", parentId)
+    for (dbxref <- feature.getDbxrefs.asScala) attrs += Tuple2("Dbxref", asString(dbxref))
+    for (ontologyTerm <- feature.getOntologyTerms.asScala) attrs += Tuple2("Ontology_term", asString(ontologyTerm))
+    attrs ++= feature.getAttributes.asScala
+    attrs.toSeq
   }
 
   /**

@@ -55,7 +55,7 @@ import org.bdgenomics.adam.sql.{
 }
 import org.bdgenomics.adam.util.ADAMFunSuite
 import org.bdgenomics.formats.avro._
-import scala.collection.JavaConversions._
+import scala.jdk.CollectionConverters._
 
 class VariantContextDatasetSuite extends ADAMFunSuite {
 
@@ -79,7 +79,7 @@ class VariantContextDatasetSuite extends ADAMFunSuite {
 
     val g0 = Genotype.newBuilder().setVariant(v0)
       .setSampleId("NA12878")
-      .setAlleles(List(GenotypeAllele.REF, GenotypeAllele.ALT))
+      .setAlleles(List(GenotypeAllele.REF, GenotypeAllele.ALT).asJava)
       .build
 
     VariantContextDataset(sc.parallelize(List(
@@ -124,12 +124,12 @@ class VariantContextDatasetSuite extends ADAMFunSuite {
     assert(variant.getStart === 17409572)
     assert(variant.getReferenceAllele === "T")
     assert(variant.getAlternateAllele === "C")
-    assert(variant.getNames.length === 2)
+    assert(variant.getNames.asScala.length === 2)
     assert(variant.getNames.get(0) === "rs3131972")
     assert(variant.getNames.get(1) === "rs201888535")
     assert(variant.getFiltersApplied === true)
     assert(variant.getFiltersPassed === true)
-    assert(variant.getFiltersFailed.isEmpty)
+    assert(variant.getFiltersFailed.asScala.isEmpty)
 
     assert(vcRdd.references.records.size === 1)
     assert(vcRdd.references.records(0).name === "chr11")
@@ -272,7 +272,7 @@ class VariantContextDatasetSuite extends ADAMFunSuite {
     }
 
     // retrieve accumulated VCF header lines
-    val headerLines = accumulator.value.distinct
+    val headerLines = accumulator.value.asScala.distinct.toSeq
     val updatedHeaders = pipedRdd.replaceHeaderLines(headerLines)
 
     // check for freebayes-specific VCF INFO header lines

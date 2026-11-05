@@ -1,8 +1,8 @@
 ADAM
 ====
 
-[![Maven Central](https://img.shields.io/maven-central/v/org.bdgenomics.adam/adam-parent-spark3_2.12.svg?maxAge=600)](http://search.maven.org/#search%7Cga%7C1%7Corg.bdgenomics.adam)
-[![API Documentation](http://javadoc.io/badge/org.bdgenomics.adam/adam-core-spark3_2.12.svg?color=brightgreen&label=scaladoc)](http://javadoc.io/doc/org.bdgenomics.adam/adam-core-spark3_2.12)
+[![Maven Central](https://img.shields.io/maven-central/v/org.bdgenomics.adam/adam-core-spark4_2.13.svg?maxAge=600)](http://search.maven.org/#search%7Cga%7C1%7Corg.bdgenomics.adam)
+[![API Documentation](http://javadoc.io/badge/org.bdgenomics.adam/adam-core-spark4_2.13.svg?color=brightgreen&label=scaladoc)](http://javadoc.io/doc/org.bdgenomics.adam/adam-core-spark4_2.13)
 
 # Introduction
 
@@ -89,13 +89,15 @@ Find `{tag}` on the tag search page, https://quay.io/repository/biocontainers/ad
 
 ## Building from Source
 
-You will need to have [Apache Maven](http://maven.apache.org/) version 3.3.9 or
-later installed in order to build ADAM.
+ADAM builds with [Mill](https://mill-build.org). The `./mill` launcher script in
+the repository downloads Mill and the JDK it needs, so only `curl` or `wget` is required.
 
 ```bash
 $ git clone https://github.com/bigdatagenomics/adam.git
 $ cd adam
-$ mvn install
+$ ./mill __.compile               # compile all modules
+$ ./mill __.test                  # run all tests
+$ ./mill adam-assembly.assembly   # build the ADAM CLI überjar used by bin/adam-submit
 ```
 
 ### Installing Spark
@@ -103,14 +105,14 @@ $ mvn install
 You'll need to have a Spark release on your system and the `$SPARK_HOME` environment variable pointing at it;
 prebuilt binaries can be downloaded from the [Spark website](http://spark.apache.org/downloads.html).
 
-As of ADAM version 0.37.0, Spark version 3.2.0 or later is required.
+As of ADAM version 2.0.0, Spark version 4.0.0 or later (Scala 2.13, Java 17 or later) is required.
 
 
 # Documentation
 
 ADAM's documentation is available at http://adam.readthedocs.io.
 
-ADAM's core API documentation is available at http://javadoc.io/doc/org.bdgenomics.adam/adam-core-spark3_2.12.
+ADAM's core API documentation is available at http://javadoc.io/doc/org.bdgenomics.adam/adam-core-spark4_2.13.
 
 # The ADAM/Big Data Genomics Ecosystem
 

@@ -20,15 +20,16 @@ package org.bdgenomics.adam.util
 import org.apache.avro.generic.IndexedRecord
 import org.apache.hadoop.fs.Path
 import org.apache.parquet.avro.AvroParquetReader
+import org.apache.parquet.hadoop.util.HadoopInputFile
 import org.apache.spark.SparkContext
 
 /**
- * Implements a traversable collection that is backed by a Parquet file.
+ * Implements an iterable collection that is backed by a Parquet file.
  *
  * @param sc A SparkContext to use to get underlying Hadoop FileSystem config.
  * @param file The path to the Parquet file to load.
  */
-class ParquetFileTraversable[T <: IndexedRecord](sc: SparkContext, file: Path) extends Traversable[T] {
+class ParquetFileTraversable[T <: IndexedRecord](sc: SparkContext, file: Path) extends Iterable[T] {
 
   /**
    * @param sc A SparkContext to use to get underlying Hadoop FileSystem config.
@@ -61,24 +62,17 @@ class ParquetFileTraversable[T <: IndexedRecord](sc: SparkContext, file: Path) e
   }
 
   /**
-   * Runs a for loop over each record in the file, and applies a function.
-   *
-   * @param f The function to apply to each record.
+   * Streams the records of each Parquet part file in turn. Each reader is
+   * closed once its file has been read to the end.
    */
-  override def foreach[U](f: (T) => U) {
-    var record: T = null.asInstanceOf[T]
-
-    paths.foreach(path => {
-      val parquetReader = new AvroParquetReader[T](path)
-      try {
-        record = parquetReader.read()
-        while (record != null) {
-          f(record)
-          record = parquetReader.read()
-        }
-      } finally {
-        parquetReader.close()
-      }
+  override def iterator: Iterator[T] = {
+    paths.iterator.flatMap(path => {
+      val parquetReader = AvroParquetReader.builder[T](HadoopInputFile.fromPath(path, sc.hadoopConfiguration)).build()
+      Iterator.continually(parquetReader.read())
+        .takeWhile(record => {
+          if (record == null) parquetReader.close()
+          record != null
+        })
     })
   }
 }

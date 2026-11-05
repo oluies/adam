@@ -18,7 +18,7 @@
 package org.bdgenomics.adam.projections
 
 import org.apache.avro.Schema
-import scala.collection.JavaConversions._
+import scala.jdk.CollectionConverters._
 import org.apache.avro.Schema.Field
 
 /**
@@ -30,8 +30,8 @@ object Projection {
                                fields: Set[String],
                                exclude: Boolean = false): Schema = {
     val projectedSchema = Schema.createRecord(fullSchema.getName, fullSchema.getDoc, fullSchema.getNamespace, fullSchema.isError)
-    projectedSchema.setFields(fullSchema.getFields.filter(createFilterPredicate(fields, exclude))
-      .map(p => new Field(p.name, p.schema, p.doc, p.defaultVal, p.order)))
+    projectedSchema.setFields(fullSchema.getFields.asScala.filter(createFilterPredicate(fields, exclude))
+      .map(p => new Field(p.name, p.schema, p.doc, p.defaultVal, p.order)).asJava)
     projectedSchema
   }
 

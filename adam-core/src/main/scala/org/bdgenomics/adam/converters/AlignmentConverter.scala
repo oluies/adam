@@ -38,7 +38,7 @@ import org.bdgenomics.formats.avro.{
   Fragment,
   ProcessingStep
 }
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 
 /**
  * Conversions between Alignments and other formats.
@@ -575,7 +575,7 @@ class AlignmentConverter extends Serializable with Logging {
    *         Alignment per sequence in the Fragment.
    */
   def convertFragment(fragment: Fragment): Iterable[Alignment] = {
-    asScalaBuffer(fragment.getAlignments)
+    fragment.getAlignments.asScala
   }
 }
 
@@ -615,7 +615,7 @@ object AlignmentConverter extends Serializable {
    */
   def processingSteps(header: SAMFileHeader): Seq[ProcessingStep] = {
     val programRecords = header.getProgramRecords().asScala
-    programRecords.map(convertSAMProgramRecord)
+    programRecords.map(convertSAMProgramRecord).toSeq
   }
 
   private def convertSAMProgramRecord(record: SAMProgramRecord): ProcessingStep = {

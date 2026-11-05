@@ -1,0 +1,305 @@
+//| mill-version: 1.3.1
+//| mill-jvm-version: temurin:17
+/**
+ * Licensed to Big Data Genomics (BDG) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The BDG licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package build
+
+import mill.*
+import mill.api.BuildCtx
+import mill.scalalib.*
+import mill.scalalib.publish.*
+
+object Versions {
+  val adam = "2.0.0-SNAPSHOT"
+  val scala = "2.13.18"
+  val spark = "4.3.0"
+  val sparkMajor = "spark4"
+  val jvm = "temurin:17"
+}
+
+object Deps {
+  val sparkCore = mvn"org.apache.spark::spark-core:${Versions.spark}"
+  val sparkSql = mvn"org.apache.spark::spark-sql:${Versions.spark}"
+
+  val args4j = mvn"args4j:args4j:2.37"
+  val avro = mvn"org.apache.avro:avro:1.12.1"
+  val bdgFormats = mvn"org.bdgenomics.bdg-formats:bdg-formats:1.0.3"
+  val commonsIo = mvn"commons-io:commons-io:2.22.0"
+  val commonsLang3 = mvn"org.apache.commons:commons-lang3:3.20.0"
+  val fastutil = mvn"it.unimi.dsi:fastutil:8.5.15"
+  val grizzledSlf4j = mvn"org.clapper::grizzled-slf4j:1.3.4"
+  val guava = mvn"com.google.guava:guava:33.6.0-jre"
+  val hadoopBam = mvn"org.seqdoop:hadoop-bam:7.10.0"
+    .exclude("org.apache.hadoop" -> "hadoop-client", "org.seqdoop" -> "htsjdk")
+  val htsjdk = mvn"com.github.samtools:htsjdk:2.19.0"
+  val httpclient = mvn"org.apache.httpcomponents:httpclient:4.5.14"
+  val parquetAvro = mvn"org.apache.parquet:parquet-avro:1.17.0"
+  val scalaGuice = mvn"net.codingwell::scala-guice:7.0.0"
+
+  val mockito = mvn"org.mockito:mockito-core:5.14.2"
+  val scalatest = mvn"org.scalatest::scalatest:3.0.9"
+}
+
+/** Settings shared by every ADAM JVM module. */
+trait AdamModule extends SbtModule with PublishModule {
+  def scalaVersion = Versions.scala
+  def jvmVersion = Versions.jvm
+
+  /** Artifact names carry the Spark major version, e.g. adam-core-spark4_2.13. */
+  def artifactName = s"${moduleSegments.parts.last}-${Versions.sparkMajor}"
+  def publishVersion = Versions.adam
+
+  def pomSettings = PomSettings(
+    description = "A fast, scalable genome analysis system",
+    organization = "org.bdgenomics.adam",
+    url = "https://github.com/bigdatagenomics/adam",
+    licenses = Seq(License.`Apache-2.0`),
+    versionControl = VersionControl.github("bigdatagenomics", "adam"),
+    developers = Seq(Developer("heuermh", "Michael L Heuer", "https://github.com/heuermh"))
+  )
+
+  def scalacOptions = Seq("-unchecked", "-deprecation", "-release", "17")
+  def javacOptions = Seq("--release", "17")
+
+  /** Spark is provided by the cluster at runtime. */
+  def compileMvnDeps = Seq(Deps.sparkCore, Deps.sparkSql)
+
+  trait AdamTests extends SbtTests with TestModule.ScalaTest {
+    def mvnDeps = Seq(Deps.scalatest, Deps.sparkCore, Deps.sparkSql)
+
+    /** Like Maven, put this module's own test resources ahead of upstream test modules' (e.g. sorted.vcf). */
+    def runClasspath = Task {
+      val local = localRunClasspath()
+      local ++ super.runClasspath().filterNot(local.contains)
+    }
+
+    def forkArgs = Seq(
+      "-Xmx2g",
+      "-Dsun.io.serialization.extendedDebugInfo=true",
+      // expected test outputs use '.' as the decimal separator
+      "-Duser.language=en",
+      "-Duser.country=US",
+      // Spark 4 on Java 17+ needs these module openings
+      "--add-opens=java.base/java.lang=ALL-UNNAMED",
+      "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED",
+      "--add-opens=java.base/java.lang.reflect=ALL-UNNAMED",
+      "--add-opens=java.base/java.io=ALL-UNNAMED",
+      "--add-opens=java.base/java.net=ALL-UNNAMED",
+      "--add-opens=java.base/java.nio=ALL-UNNAMED",
+      "--add-opens=java.base/java.util=ALL-UNNAMED",
+      "--add-opens=java.base/java.util.concurrent=ALL-UNNAMED",
+      "--add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED",
+      "--add-opens=java.base/jdk.internal.ref=ALL-UNNAMED",
+      "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED",
+      "--add-opens=java.base/sun.nio.cs=ALL-UNNAMED",
+      "--add-opens=java.base/sun.security.action=ALL-UNNAMED",
+      "--add-opens=java.base/sun.util.calendar=ALL-UNNAMED",
+      "-Djdk.reflect.useDirectMethodHandle=false",
+      "-Dio.netty.tryReflectionSetAccessible=true",
+      "-Dspark.local.ip=localhost"
+    )
+  }
+}
+
+/** The subset of bdg-utils that ADAM uses, vendored because bdg-utils was never published for Scala 2.13. */
+object `adam-utils` extends AdamModule {
+  def mvnDeps = Seq(
+    Deps.args4j,
+    Deps.grizzledSlf4j,
+    Deps.httpclient,
+    Deps.parquetAvro
+  )
+
+  object test extends AdamTests {
+    def mvnDeps = super.mvnDeps() ++ Seq(Deps.guava)
+  }
+}
+
+object `adam-codegen` extends AdamModule {
+  def mvnDeps = Seq(Deps.avro)
+  def compileMvnDeps = Seq.empty[Dep]
+}
+
+object `adam-core` extends AdamModule {
+  def moduleDeps = Seq(`adam-utils`, `adam-codegen`)
+
+  def mvnDeps = Seq(
+    Deps.avro,
+    Deps.bdgFormats,
+    Deps.commonsIo,
+    Deps.commonsLang3,
+    Deps.fastutil,
+    Deps.grizzledSlf4j,
+    Deps.guava,
+    Deps.hadoopBam,
+    Deps.htsjdk,
+    Deps.httpclient,
+    Deps.parquetAvro
+  )
+
+  private val productSchemas = Seq(
+    "Alignment", "Dbxref", "Feature", "Fragment", "Genotype", "OntologyTerm",
+    "ProcessingStep", "Reference", "Read", "Sequence", "Slice", "TranscriptEffect",
+    "Variant", "VariantAnnotation", "VariantCallingAnnotations"
+  )
+
+  private val projectionSchemas = Seq(
+    "Alignment", "Dbxref", "Feature", "Fragment", "Genotype", "OntologyTerm",
+    "Read", "ReadGroup", "Reference", "Sample", "Sequence", "Slice",
+    "TranscriptEffect", "Variant", "VariantAnnotation", "VariantCallingAnnotations"
+  )
+
+  /** Generates Dataset products and projection enums from the bdg-formats Avro schemas. */
+  def generatedSources = Task {
+    val classpath = (`adam-codegen`.runClasspath() ++ defaultResolver().classpath(Seq(Deps.bdgFormats)))
+      .map(_.path)
+    def generate(mainClass: String, pkg: String, schemas: Seq[String], out: os.Path): Unit =
+      mill.util.Jvm.callProcess(
+        mainClass = mainClass,
+        classPath = classpath,
+        mainArgs = Seq(pkg) ++ schemas.map("org.bdgenomics.formats.avro." + _) ++ Seq(out.toString),
+        javaHome = javaHome().map(_.path),
+        stdout = os.Inherit
+      )
+    val dest = Task.dest / "scala"
+    os.makeDir.all(dest / "org/bdgenomics/adam/sql")
+    os.makeDir.all(dest / "org/bdgenomics/adam/projections")
+    generate("org.bdgenomics.adam.codegen.DumpSchemasToProduct", "org.bdgenomics.adam.sql",
+      productSchemas, dest / "org/bdgenomics/adam/sql/Schemas.scala")
+    generate("org.bdgenomics.adam.codegen.DumpSchemasToProjectionEnums", "org.bdgenomics.adam.projections",
+      projectionSchemas, dest / "org/bdgenomics/adam/projections/Enums.scala")
+    Seq(PathRef(dest))
+  }
+
+  object test extends AdamTests {
+    def moduleDeps = super.moduleDeps ++ Seq(`adam-utils`.test)
+    def mvnDeps = super.mvnDeps() ++ Seq(Deps.mockito)
+  }
+}
+
+object `adam-apis` extends AdamModule {
+  def moduleDeps = Seq(`adam-core`)
+  def mvnDeps = Seq(Deps.args4j)
+
+  object test extends AdamTests {
+    def moduleDeps = super.moduleDeps ++ Seq(`adam-core`.test)
+  }
+}
+
+object `adam-cli` extends AdamModule {
+  def moduleDeps = Seq(`adam-apis`)
+  def mvnDeps = Seq(Deps.args4j, Deps.scalaGuice)
+
+  def gitCommit = Task.Input {
+    os.proc("git", "rev-parse", "HEAD").call(cwd = BuildCtx.workspaceRoot, check = false).out.trim()
+  }
+
+  def aboutTemplate = Task.Source("src/main/java-templates/org/bdgenomics/adam/cli/About.java")
+
+  /** Fills in the build metadata placeholders in About.java. */
+  def generatedSources = Task {
+    val values = Map(
+      "project.artifactId" -> s"${artifactName()}_${artifactScalaVersion()}",
+      "build-helper-maven-plugin.build.timestamp" -> java.time.LocalDate.now().toString,
+      "git.commit.id" -> gitCommit(),
+      "scala.version" -> scalaVersion(),
+      "spark.version" -> Versions.spark,
+      "project.version" -> publishVersion()
+    )
+    val about = values.foldLeft(os.read(aboutTemplate().path)) { case (text, (k, v)) =>
+      text.replace("${" + k + "}", v)
+    }
+    os.write(Task.dest / "org/bdgenomics/adam/cli/About.java", about, createFolders = true)
+    Seq(PathRef(Task.dest))
+  }
+
+  object test extends AdamTests {
+    def moduleDeps = super.moduleDeps ++ Seq(`adam-apis`.test)
+  }
+}
+
+object `adam-assembly` extends AdamModule {
+  def moduleDeps = Seq(`adam-cli`)
+  def mainClass = Some("org.bdgenomics.adam.cli.ADAMMain")
+
+  /** Spark and Scala come from the cluster, so leave them out of the fat jar. */
+  def upstreamIvyAssemblyClasspath = Task {
+    super.upstreamIvyAssemblyClasspath().filterNot { ref =>
+      val name = ref.path.last
+      name.startsWith("scala-library-") || name.startsWith("scala-reflect-")
+    }
+  }
+
+  /** A plain jar for spark-submit, without a launcher script prepended. */
+  def prependShellScript = ""
+
+  def assemblyRules = super.assemblyRules ++ Seq(
+    Assembly.Rule.ExcludePattern("META-INF/.*\\.SF"),
+    Assembly.Rule.ExcludePattern("META-INF/.*\\.DSA"),
+    Assembly.Rule.ExcludePattern("META-INF/.*\\.RSA")
+  )
+}
+
+/** Binary distribution: tar.gz and zip with the assembly jar, launcher scripts and scaladocs. */
+object `adam-distribution` extends Module {
+  def docFiles = Task.Sources(
+    BuildCtx.workspaceRoot / "LICENSE.txt",
+    BuildCtx.workspaceRoot / "CHANGES.md",
+    BuildCtx.workspaceRoot / "CONTRIBUTING.md",
+    BuildCtx.workspaceRoot / "README.md"
+  )
+  def binDir = Task.Source(BuildCtx.workspaceRoot / "bin")
+
+  def dist = Task {
+    val name = s"adam-distribution-${Versions.sparkMajor}_2.13-${Versions.adam}"
+    val root = Task.dest / name
+    for (f <- docFiles()) os.copy(f.path, root / f.path.last, createFolders = true)
+    os.copy(binDir().path, root / "bin", createFolders = true)
+    os.copy(
+      `adam-assembly`.assembly().path,
+      root / "repo" / s"adam-assembly-${Versions.sparkMajor}_2.13-${Versions.adam}.jar",
+      createFolders = true
+    )
+    val docJars = Task.sequence(Seq(`adam-core`, `adam-apis`, `adam-cli`).map(_.docJar))()
+    for ((jar, name) <- docJars.zip(Seq("adam-core", "adam-apis", "adam-cli")))
+      os.copy(jar.path, root / "scaladocs" / s"$name-scaladoc.jar", createFolders = true)
+    os.proc("tar", "czf", s"$name-bin.tar.gz", name).call(cwd = Task.dest)
+    os.proc("zip", "-qr", s"$name-bin.zip", name).call(cwd = Task.dest)
+    Seq(PathRef(Task.dest / s"$name-bin.tar.gz"), PathRef(Task.dest / s"$name-bin.zip"))
+  }
+}
+
+/** Python bindings; these wrap the Makefile and expect an active virtualenv. */
+object `adam-python` extends Module {
+  def develop() = Task.Command {
+    os.proc("make", "develop").call(cwd = moduleDir, stdout = os.Inherit)
+  }
+  def pytest() = Task.Command {
+    `adam-assembly`.assembly()
+    os.proc("make", "test").call(cwd = moduleDir, stdout = os.Inherit)
+  }
+}
+
+/** R bindings; these need R with devtools installed. */
+object `adam-r` extends Module {
+  def check() = Task.Command {
+    os.proc("R", "-e", "library(devtools);devtools::document()").call(cwd = moduleDir / "bdgenomics.adam", stdout = os.Inherit)
+    os.proc("R", "CMD", "build", "bdgenomics.adam/").call(cwd = moduleDir, stdout = os.Inherit)
+    os.proc("R", "CMD", "check", "bdgenomics.adam/").call(cwd = moduleDir, stdout = os.Inherit)
+  }
+}

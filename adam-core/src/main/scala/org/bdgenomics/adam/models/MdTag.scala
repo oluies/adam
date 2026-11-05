@@ -20,7 +20,7 @@ package org.bdgenomics.adam.models
 import htsjdk.samtools.{ Cigar, CigarOperator }
 import org.bdgenomics.adam.rich.RichAlignment._
 import org.bdgenomics.adam.rich.RichAlignment
-import scala.collection.JavaConversions._
+import scala.jdk.CollectionConverters._
 import scala.collection.immutable
 import scala.collection.immutable.NumericRange
 import scala.util.matching.Regex
@@ -200,7 +200,7 @@ object MdTag {
     var deletions: Map[Long, Char] = Map[Long, Char]()
 
     // loop over cigar elements and fill sets
-    newCigar.getCigarElements.foreach(cigarElement => {
+    newCigar.getCigarElements.asScala.foreach(cigarElement => {
       cigarElement.getOperator match {
         case CigarOperator.M => {
           var rangeStart = 0L
@@ -307,7 +307,7 @@ object MdTag {
     var refPos = 0
 
     // loop over all cigar elements
-    cigar.getCigarElements.foreach(cigarElement => {
+    cigar.getCigarElements.asScala.foreach(cigarElement => {
       cigarElement.getOperator match {
         case CigarOperator.M | CigarOperator.EQ | CigarOperator.X => {
           for (i <- 0 until cigarElement.getLength) {
@@ -471,7 +471,7 @@ case class MdTag(
     var reference = ""
 
     // loop over all cigar elements
-    cigar.getCigarElements.foreach(cigarElement => {
+    cigar.getCigarElements.asScala.foreach(cigarElement => {
       cigarElement.getOperator match {
         case CigarOperator.M | CigarOperator.EQ | CigarOperator.X => {
           // if we are a match, loop over bases in element

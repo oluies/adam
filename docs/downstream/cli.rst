@@ -1,7 +1,7 @@
 Extend the ADAM CLI by adding new commands
 ------------------------------------------
 
-ADAM's CLI is implemented in the adam-cli Apache Maven module of the
+ADAM's CLI is implemented in the adam-cli Mill module of the
 `bdgenomics/adam <https://github.com/bigdatagenomics/adam>`__
 repository, one .scala source file for each CLI action (e.g.
 `TransformAlignments.scala <https://github.com/bigdatagenomics/adam/blob/master/adam-cli/src/main/scala/org/bdgenomics/adam/cli/TransformAlignments.scala>`__
@@ -92,7 +92,7 @@ Build ADAM and run the new command via ``adam-submit``.
 
 ::
 
-    $ mvn install
+    $ ./mill adam-assembly.assembly
     $ ./bin/adam-submit --help
     Using ADAM_MAIN=org.bdgenomics.adam.cli.ADAMMain
     Using SPARK_SUBMIT=/usr/local/bin/spark-submit

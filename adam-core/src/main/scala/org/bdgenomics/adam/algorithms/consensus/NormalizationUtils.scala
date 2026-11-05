@@ -22,7 +22,7 @@ import org.bdgenomics.adam.rich.RichAlignment
 import org.bdgenomics.adam.rich.RichCigar
 import org.bdgenomics.formats.avro.Alignment
 import scala.annotation.tailrec
-import scala.collection.JavaConversions._
+import scala.jdk.CollectionConverters._
 
 /**
  * Utility for left normalizing INDELs in alignments.
@@ -46,7 +46,7 @@ private[adam] object NormalizationUtils {
     val cigar = richRead.samtoolsCigar
 
     // find indel in cigar
-    cigar.getCigarElements.map(elem => {
+    cigar.getCigarElements.asScala.map(elem => {
       elem.getOperator match {
         case (CigarOperator.I) =>
           if (indelPos == -1) {

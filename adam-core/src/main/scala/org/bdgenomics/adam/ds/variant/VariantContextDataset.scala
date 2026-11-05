@@ -69,7 +69,7 @@ import org.seqdoop.hadoop_bam.util.{
   BGZFCodec,
   BGZFEnhancedGzipCodec
 }
-import scala.collection.JavaConversions._
+import scala.jdk.CollectionConverters._
 import scala.reflect.ClassTag
 import scala.reflect.runtime.universe._
 
@@ -260,7 +260,7 @@ sealed abstract class VariantContextDataset extends MultisampleGenomicDataset[Va
 
   def saveVcfHeaders(filePath: String): Unit = {
     // write vcf headers to file
-    VCFHeaderUtils.write(new VCFHeader(headerLines.toSet),
+    VCFHeaderUtils.write(new VCFHeader(headerLines.toSet.asJava),
       new Path("%s/_header".format(filePath)),
       rdd.context.hadoopConfiguration,
       false,
@@ -391,8 +391,8 @@ sealed abstract class VariantContextDataset extends MultisampleGenomicDataset[Va
     stringency: ValidationStringency): (VCFHeader, RDD[htsjdk.variant.variantcontext.VariantContext]) = {
 
     val header = new VCFHeader(
-      headerLines.toSet,
-      samples.map(_.getId))
+      headerLines.toSet.asJava,
+      samples.map(_.getId).asJava)
     header.setSequenceDictionary(references.toSAMSequenceDictionary)
 
     val converter = VariantContextConverter(headerLines,
@@ -456,8 +456,8 @@ sealed abstract class VariantContextDataset extends MultisampleGenomicDataset[Va
 
     // make header
     val header = new VCFHeader(
-      headerLines.toSet,
-      samples.map(_.getId))
+      headerLines.toSet.asJava,
+      samples.map(_.getId).asJava)
     header.setSequenceDictionary(references.toSAMSequenceDictionary)
 
     // write header

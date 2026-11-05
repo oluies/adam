@@ -45,7 +45,7 @@ import org.bdgenomics.adam.models.{
 import org.bdgenomics.adam.ds.ADAMContext._
 import org.bdgenomics.adam.util.{ ADAMFunSuite, PhredUtils }
 import org.bdgenomics.formats.avro._
-import scala.collection.JavaConversions._
+import scala.jdk.CollectionConverters._
 
 class VariantContextConverterSuite extends ADAMFunSuite {
   val dictionary = {
@@ -60,25 +60,25 @@ class VariantContextConverterSuite extends ADAMFunSuite {
     ValidationStringency.STRICT, false)
 
   def htsjdkSNVBuilder: VariantContextBuilder = new VariantContextBuilder()
-    .alleles(List(Allele.create("A", true), Allele.create("T")))
+    .alleles(List(Allele.create("A", true), Allele.create("T")).asJava)
     .start(1L)
     .stop(1L)
     .chr("1")
 
   def htsjdkMultiAllelicSNVBuilder: VariantContextBuilder = new VariantContextBuilder()
-    .alleles(List(Allele.create("A", true), Allele.create("T"), Allele.create("G")))
+    .alleles(List(Allele.create("A", true), Allele.create("T"), Allele.create("G")).asJava)
     .start(1L)
     .stop(1L)
     .chr("1")
 
   def htsjdkRefSNV: VariantContextBuilder = new VariantContextBuilder()
-    .alleles(List(Allele.create("A", true), Allele.create("<NON_REF>", false)))
+    .alleles(List(Allele.create("A", true), Allele.create("<NON_REF>", false)).asJava)
     .start(1L)
     .stop(1L)
     .chr("1")
 
   def htsjdkCNVBuilder: VariantContextBuilder = new VariantContextBuilder()
-    .alleles(List(Allele.create("A", true), Allele.create("<CN0>", false)))
+    .alleles(List(Allele.create("A", true), Allele.create("<CN0>", false)).asJava)
     .start(10L)
     .stop(20L)
     .chr("1")
@@ -106,7 +106,7 @@ class VariantContextConverterSuite extends ADAMFunSuite {
 
   test("Convert somatic htsjdk site-only SNV to ADAM") {
     val vcb: VariantContextBuilder = new VariantContextBuilder()
-      .alleles(List(Allele.create("A", true), Allele.create("T")))
+      .alleles(List(Allele.create("A", true), Allele.create("T")).asJava)
       .start(1L)
       .stop(1L)
       .chr("1")
@@ -140,7 +140,7 @@ class VariantContextConverterSuite extends ADAMFunSuite {
 
     val genotypeAttributes = Map[String, Object]("PQ" -> new Integer(50), "PS" -> new Integer(1))
     val vc = vcb.genotypes(new GenotypeBuilder(
-      GenotypeBuilder.create("NA12878", vcb.getAlleles(), genotypeAttributes))
+      GenotypeBuilder.create("NA12878", vcb.getAlleles(), genotypeAttributes.asJava))
       .phased(true)
       .make)
       .make()
@@ -151,7 +151,7 @@ class VariantContextConverterSuite extends ADAMFunSuite {
     val adamGTs = adamVCs.flatMap(_.genotypes)
     assert(adamGTs.length === 1)
     val adamGT = adamGTs.head
-    assert(adamGT.getAlleles.sameElements(List(GenotypeAllele.REF, GenotypeAllele.ALT)))
+    assert(adamGT.getAlleles.asScala.sameElements(List(GenotypeAllele.REF, GenotypeAllele.ALT)))
     assert(adamGT.getPhaseSetId === 1)
     assert(adamGT.getPhaseQuality === 50)
   }
@@ -165,7 +165,7 @@ class VariantContextConverterSuite extends ADAMFunSuite {
       val adamVariant = adamVCs.map(_.variant).head
       assert(adamVariant.variant.getFiltersApplied === false)
       assert(adamVariant.variant.getFiltersPassed === null)
-      assert(adamVariant.variant.getFiltersFailed.isEmpty)
+      assert(adamVariant.variant.getFiltersFailed.asScala.isEmpty)
     }
     { // PASSing
       vcb.unfiltered.passFilters
@@ -173,7 +173,7 @@ class VariantContextConverterSuite extends ADAMFunSuite {
       val adamVariant = adamVCs.map(_.variant).head
       assert(adamVariant.variant.getFiltersApplied === true)
       assert(adamVariant.variant.getFiltersPassed === true)
-      assert(adamVariant.variant.getFiltersFailed.isEmpty)
+      assert(adamVariant.variant.getFiltersFailed.asScala.isEmpty)
     }
     { // not PASSing
       vcb.unfiltered.filter("LowMQ")
@@ -181,7 +181,7 @@ class VariantContextConverterSuite extends ADAMFunSuite {
       val adamVariant = adamVCs.map(_.variant).head
       assert(adamVariant.variant.getFiltersApplied === true)
       assert(adamVariant.variant.getFiltersPassed === false)
-      assert(adamVariant.variant.getFiltersFailed.sameElements(List("LowMQ")))
+      assert(adamVariant.variant.getFiltersFailed.asScala.sameElements(List("LowMQ")))
     }
   }
 
@@ -197,7 +197,7 @@ class VariantContextConverterSuite extends ADAMFunSuite {
       // htsjdk does not distinguish between filters not applied and filters passed in Genotype
       assert(adamGT.getVariantCallingAnnotations.getFiltersApplied === true)
       assert(adamGT.getVariantCallingAnnotations.getFiltersPassed === true)
-      assert(adamGT.getVariantCallingAnnotations.getFiltersFailed.isEmpty)
+      assert(adamGT.getVariantCallingAnnotations.getFiltersFailed.asScala.isEmpty)
     }
     { // PASSing
       gb.filter("PASS")
@@ -206,7 +206,7 @@ class VariantContextConverterSuite extends ADAMFunSuite {
       val adamGT = adamVCs.flatMap(_.genotypes).head
       assert(adamGT.getVariantCallingAnnotations.getFiltersApplied === true)
       assert(adamGT.getVariantCallingAnnotations.getFiltersPassed === true)
-      assert(adamGT.getVariantCallingAnnotations.getFiltersFailed.isEmpty)
+      assert(adamGT.getVariantCallingAnnotations.getFiltersFailed.asScala.isEmpty)
     }
     { // not PASSing
       gb.filter("LowMQ")
@@ -216,7 +216,7 @@ class VariantContextConverterSuite extends ADAMFunSuite {
       val adamGT = adamVCs.flatMap(_.genotypes).head
       assert(adamGT.getVariantCallingAnnotations.getFiltersApplied === true)
       assert(adamGT.getVariantCallingAnnotations.getFiltersPassed === false)
-      assert(adamGT.getVariantCallingAnnotations.getFiltersFailed.sameElements(List("LowMQ")))
+      assert(adamGT.getVariantCallingAnnotations.getFiltersFailed.asScala.sameElements(List("LowMQ")))
     }
   }
 
@@ -231,7 +231,7 @@ class VariantContextConverterSuite extends ADAMFunSuite {
     assert(htsjdkVC.getStart === 1)
     assert(htsjdkVC.getEnd === 1)
     assert(htsjdkVC.getReference === Allele.create("A", true))
-    assert(htsjdkVC.getAlternateAlleles.sameElements(List(Allele.create("T"))))
+    assert(htsjdkVC.getAlternateAlleles.asScala.sameElements(List(Allele.create("T"))))
     assert(!htsjdkVC.hasLog10PError)
     assert(!htsjdkVC.hasID)
     assert(!htsjdkVC.filtersWereApplied)
@@ -242,8 +242,8 @@ class VariantContextConverterSuite extends ADAMFunSuite {
     val genotype = Genotype.newBuilder
       .setVariant(variant)
       .setSampleId("NA12878")
-      .setStrandBiasComponents(List(0, 2, 4, 6).map(i => i: java.lang.Integer))
-      .setAlleles(List(GenotypeAllele.REF, GenotypeAllele.ALT))
+      .setStrandBiasComponents(List(0, 2, 4, 6).map(i => i: java.lang.Integer).asJava)
+      .setAlleles(List(GenotypeAllele.REF, GenotypeAllele.ALT).asJava)
       .setVariantCallingAnnotations(VariantCallingAnnotations.newBuilder()
         .setFisherStrandBiasPValue(3.0f)
         .setRmsMapQ(0.0f)
@@ -276,8 +276,8 @@ class VariantContextConverterSuite extends ADAMFunSuite {
     val genotype = Genotype.newBuilder
       .setVariant(variant)
       .setSampleId("NA12878")
-      .setStrandBiasComponents(List(0, 2).map(i => i: java.lang.Integer))
-      .setAlleles(List(GenotypeAllele.REF, GenotypeAllele.ALT))
+      .setStrandBiasComponents(List(0, 2).map(i => i: java.lang.Integer).asJava)
+      .setAlleles(List(GenotypeAllele.REF, GenotypeAllele.ALT).asJava)
       .setVariantCallingAnnotations(VariantCallingAnnotations.newBuilder()
         .setFisherStrandBiasPValue(3.0f)
         .setRmsMapQ(0.0f)
@@ -295,8 +295,8 @@ class VariantContextConverterSuite extends ADAMFunSuite {
     val genotype = Genotype.newBuilder
       .setVariant(variant)
       .setSampleId("NA12878")
-      .setStrandBiasComponents(List(0, 2).map(i => i: java.lang.Integer))
-      .setAlleles(List(GenotypeAllele.REF, GenotypeAllele.ALT))
+      .setStrandBiasComponents(List(0, 2).map(i => i: java.lang.Integer).asJava)
+      .setAlleles(List(GenotypeAllele.REF, GenotypeAllele.ALT).asJava)
       .setVariantCallingAnnotations(VariantCallingAnnotations.newBuilder()
         .setFisherStrandBiasPValue(3.0f)
         .setRmsMapQ(0.0f)
@@ -317,7 +317,7 @@ class VariantContextConverterSuite extends ADAMFunSuite {
     val adamVCs = converter.convert(vc)
     assert(adamVCs.length === 2)
 
-    for ((allele, idx) <- vc.getAlternateAlleles.zipWithIndex) {
+    for ((allele, idx) <- vc.getAlternateAlleles.asScala.zipWithIndex) {
       val adamVC = adamVCs(idx)
       assert(adamVC.variant.variant.getReferenceAllele === vc.getReference.getBaseString)
       assert(adamVC.variant.variant.getAlternateAllele === allele.getBaseString)
@@ -325,7 +325,7 @@ class VariantContextConverterSuite extends ADAMFunSuite {
   }
 
   test("Convert htsjdk multi-allelic SNVs to ADAM and back to htsjdk") {
-    val gb = new GenotypeBuilder("NA12878", List(Allele.create("T"), Allele.create("G")))
+    val gb = new GenotypeBuilder("NA12878", List(Allele.create("T"), Allele.create("G")).asJava)
     gb.AD(Array(4, 2, 3)).PL(Array(59, 0, 181, 1, 66, 102))
 
     val vcb = htsjdkMultiAllelicSNVBuilder
@@ -344,17 +344,17 @@ class VariantContextConverterSuite extends ADAMFunSuite {
 
     val adamGT1 = adamVCs(0).genotypes.head
     val adamGT2 = adamVCs(1).genotypes.head
-    assert(adamGT1.getAlleles.sameElements(List(GenotypeAllele.ALT, GenotypeAllele.OTHER_ALT)))
+    assert(adamGT1.getAlleles.asScala.sameElements(List(GenotypeAllele.ALT, GenotypeAllele.OTHER_ALT)))
     assert(adamGT1.getAlternateReadDepth === 2)
     assert(adamGT1.getGenotypeLikelihoods
-      .map(d => d: scala.Double)
+      .asScala.map(d => d: scala.Double)
       .map(PhredUtils.logProbabilityToPhred)
       .sameElements(List(59, 0, 181)))
 
-    assert(adamGT2.getAlleles.sameElements(List(GenotypeAllele.OTHER_ALT, GenotypeAllele.ALT)))
+    assert(adamGT2.getAlleles.asScala.sameElements(List(GenotypeAllele.OTHER_ALT, GenotypeAllele.ALT)))
     assert(adamGT2.getAlternateReadDepth === 3)
     assert(adamGT2.getGenotypeLikelihoods
-      .map(d => d: scala.Double)
+      .asScala.map(d => d: scala.Double)
       .map(PhredUtils.logProbabilityToPhred)
       .sameElements(List(59, 1, 102)))
 
@@ -377,7 +377,7 @@ class VariantContextConverterSuite extends ADAMFunSuite {
   }
 
   test("Convert gVCF reference records to ADAM") {
-    val gb = new GenotypeBuilder("NA12878", List(Allele.create("A", true), Allele.create("A", true)))
+    val gb = new GenotypeBuilder("NA12878", List(Allele.create("A", true), Allele.create("A", true)).asJava)
     gb.PL(Array(0, 1, 2)).DP(44).attribute("MIN_DP", 38)
 
     val vcb = htsjdkRefSNV
@@ -390,11 +390,11 @@ class VariantContextConverterSuite extends ADAMFunSuite {
     assert(adamGTs.length === 1)
     val adamGT = adamGTs.head
     assert(adamGT.getVariant.getAlternateAllele === null)
-    assert(adamGT.getAlleles.sameElements(List(GenotypeAllele.REF, GenotypeAllele.REF)))
+    assert(adamGT.getAlleles.asScala.sameElements(List(GenotypeAllele.REF, GenotypeAllele.REF)))
     assert(adamGT.getMinReadDepth === 38)
-    assert(adamGT.getGenotypeLikelihoods.isEmpty)
+    assert(adamGT.getGenotypeLikelihoods.asScala.isEmpty)
     assert(adamGT.getNonReferenceLikelihoods
-      .map(d => d: scala.Double)
+      .asScala.map(d => d: scala.Double)
       .map(PhredUtils.logProbabilityToPhred)
       .sameElements(List(0, 1, 2)))
   }
@@ -418,7 +418,7 @@ class VariantContextConverterSuite extends ADAMFunSuite {
     assert(adamVCs.length == 1)
 
     val variant = adamVCs.head.variant
-    assert(variant.variant.getNames.length === 1)
+    assert(variant.variant.getNames.asScala.length === 1)
     assert(variant.variant.getNames.get(0) === "rs3131972")
   }
 
@@ -430,7 +430,7 @@ class VariantContextConverterSuite extends ADAMFunSuite {
     assert(adamVCs.length == 1)
 
     val variant = adamVCs.head.variant
-    assert(variant.variant.getNames.length === 2)
+    assert(variant.variant.getNames.asScala.length === 2)
     assert(variant.variant.getNames.get(0) === "rs3131972")
     assert(variant.variant.getNames.get(1) === "rs201888535")
   }
@@ -485,7 +485,7 @@ class VariantContextConverterSuite extends ADAMFunSuite {
     val htsjdkVC = optHtsjdkVC.get
     assert(!htsjdkVC.filtersWereApplied)
     assert(!htsjdkVC.isFiltered)
-    assert(htsjdkVC.getFilters.isEmpty)
+    assert(htsjdkVC.getFilters.asScala.isEmpty)
   }
 
   test("Convert ADAM variant context with no filters applied to htsjdk") {
@@ -499,7 +499,7 @@ class VariantContextConverterSuite extends ADAMFunSuite {
     val htsjdkVC = optHtsjdkVC.get
     assert(!htsjdkVC.filtersWereApplied)
     assert(!htsjdkVC.isFiltered)
-    assert(htsjdkVC.getFilters.isEmpty)
+    assert(htsjdkVC.getFilters.asScala.isEmpty)
   }
 
   test("Convert ADAM variant context with passing filters to htsjdk") {
@@ -514,7 +514,7 @@ class VariantContextConverterSuite extends ADAMFunSuite {
     val htsjdkVC = optHtsjdkVC.get
     assert(htsjdkVC.filtersWereApplied)
     assert(!htsjdkVC.isFiltered)
-    assert(htsjdkVC.getFilters.isEmpty)
+    assert(htsjdkVC.getFilters.asScala.isEmpty)
   }
 
   test("Convert ADAM variant context with failing filters to htsjdk") {
@@ -531,8 +531,8 @@ class VariantContextConverterSuite extends ADAMFunSuite {
     assert(htsjdkVC.filtersWereApplied)
     assert(htsjdkVC.isFiltered)
     assert(htsjdkVC.getFilters.size === 2)
-    assert(htsjdkVC.getFilters.contains("FILTER1"))
-    assert(htsjdkVC.getFilters.contains("FILTER2"))
+    assert(htsjdkVC.getFilters.asScala.contains("FILTER1"))
+    assert(htsjdkVC.getFilters.asScala.contains("FILTER2"))
   }
 
   def makeGenotype(genotypeAttributes: Map[String, java.lang.Object],
@@ -540,7 +540,7 @@ class VariantContextConverterSuite extends ADAMFunSuite {
     val vcb = htsjdkSNVBuilder
     val gb = fns.foldLeft(new GenotypeBuilder(GenotypeBuilder.create("NA12878",
       vcb.getAlleles(),
-      genotypeAttributes)))((bldr, fn) => {
+      genotypeAttributes.asJava)))((bldr, fn) => {
       fn(bldr)
     })
     val vc = vcb.genotypes(gb.make).make()
@@ -678,7 +678,7 @@ class VariantContextConverterSuite extends ADAMFunSuite {
         gb.noPL()
       }))
 
-    assert(gt.getGenotypeLikelihoods.isEmpty)
+    assert(gt.getGenotypeLikelihoods.asScala.isEmpty)
   }
 
   test("extract phred likelihoods going htsjdk->adam") {
@@ -690,9 +690,9 @@ class VariantContextConverterSuite extends ADAMFunSuite {
 
     val gls = gt.getGenotypeLikelihoods
     assert(gls.size === 3)
-    assert(gls(0) < -0.99e-1 && gls(0) > -1.1e-1)
-    assert(gls(1) < -0.99e-3 && gls(1) > -1.1e-3)
-    assert(gls(2) < -0.99e-6 && gls(2) > -1.1e-6)
+    assert(gls.get(0) < -0.99e-1 && gls.get(0) > -1.1e-1)
+    assert(gls.get(1) < -0.99e-3 && gls.get(1) > -1.1e-3)
+    assert(gls.get(2) < -0.99e-6 && gls.get(2) > -1.1e-6)
   }
 
   test("no strand bias info going htsjdk->adam") {
@@ -700,7 +700,7 @@ class VariantContextConverterSuite extends ADAMFunSuite {
       converter.formatStrandBiasComponents,
       fns = Iterable.empty)
 
-    assert(gt.getStrandBiasComponents.isEmpty)
+    assert(gt.getStrandBiasComponents.asScala.isEmpty)
   }
 
   test("extract strand bias info going htsjdk->adam") {
@@ -711,10 +711,10 @@ class VariantContextConverterSuite extends ADAMFunSuite {
 
     val sb = gt.getStrandBiasComponents
     assert(sb.size === 4)
-    assert(sb(0) === 10)
-    assert(sb(1) === 12)
-    assert(sb(2) === 14)
-    assert(sb(3) === 16)
+    assert(sb.get(0) === 10)
+    assert(sb.get(1) === 12)
+    assert(sb.get(2) === 14)
+    assert(sb.get(3) === 16)
   }
 
   def buildVca(
@@ -759,7 +759,7 @@ class VariantContextConverterSuite extends ADAMFunSuite {
     assert(!vca.getFiltersPassed)
     val failedFilters = vca.getFiltersFailed
     assert(failedFilters.size === 1)
-    assert(failedFilters(0) === "FAILED_FILTER")
+    assert(failedFilters.get(0) === "FAILED_FILTER")
   }
 
   test("extract multiple filters going htsjdk->adam") {
@@ -773,9 +773,9 @@ class VariantContextConverterSuite extends ADAMFunSuite {
     assert(!vca.getFiltersPassed)
     val failedFilters = vca.getFiltersFailed
     assert(failedFilters.size === 3)
-    assert(failedFilters(0) === "FAILED_FILTER1")
-    assert(failedFilters(1) === "FAILED_FILTER2")
-    assert(failedFilters(2) === "FAILED_FILTER3")
+    assert(failedFilters.get(0) === "FAILED_FILTER1")
+    assert(failedFilters.get(1) === "FAILED_FILTER2")
+    assert(failedFilters.get(2) === "FAILED_FILTER3")
   }
 
   test("no fisher strand bias going htsjdk->adam") {
@@ -927,7 +927,7 @@ class VariantContextConverterSuite extends ADAMFunSuite {
   test("extract genotype likelihoods going adam->htsjdk") {
     val g = converter.extractGenotypeLikelihoods(Genotype.newBuilder
       .setGenotypeLikelihoods(Seq(-0.1, -0.001, -0.000001)
-        .map(d => d: java.lang.Double))
+        .map(d => d: java.lang.Double).asJava)
       .build, newGb)
       .make
 
@@ -951,7 +951,7 @@ class VariantContextConverterSuite extends ADAMFunSuite {
     intercept[IllegalArgumentException] {
       val g = converter.extractStrandBiasComponents(Genotype.newBuilder
         .setStrandBiasComponents(Seq(0, 10)
-          .map(i => i: java.lang.Integer))
+          .map(i => i: java.lang.Integer).asJava)
         .build, newGb)
     }
   }
@@ -959,7 +959,7 @@ class VariantContextConverterSuite extends ADAMFunSuite {
   test("extract strand bias going adam->htsjdk") {
     val g = converter.extractStrandBiasComponents(Genotype.newBuilder
       .setStrandBiasComponents(Seq(0, 10, 5, 3)
-        .map(i => i: java.lang.Integer))
+        .map(i => i: java.lang.Integer).asJava)
       .build, newGb)
       .make
 
@@ -1086,7 +1086,7 @@ class VariantContextConverterSuite extends ADAMFunSuite {
     val g = converter.extractFilters(VariantCallingAnnotations.newBuilder
       .setFiltersApplied(true)
       .setFiltersPassed(false)
-      .setFiltersFailed(Seq("lowmq"))
+      .setFiltersFailed(Seq("lowmq").asJava)
       .build, newGb)
       .make
 
@@ -1098,7 +1098,7 @@ class VariantContextConverterSuite extends ADAMFunSuite {
     val g = converter.extractFilters(VariantCallingAnnotations.newBuilder
       .setFiltersApplied(true)
       .setFiltersPassed(false)
-      .setFiltersFailed(Seq("lowmq", "lowdp"))
+      .setFiltersFailed(Seq("lowmq", "lowdp").asJava)
       .build, newGb)
       .make
 
@@ -1192,7 +1192,7 @@ class VariantContextConverterSuite extends ADAMFunSuite {
       fns = Iterable((vcb: VariantContextBuilder) => {
         vcb.id("singleName")
       }))
-    assert(v.getNames.length === 1)
+    assert(v.getNames.asScala.length === 1)
     assert(v.getNames.get(0) === "singleName")
   }
 
@@ -1202,7 +1202,7 @@ class VariantContextConverterSuite extends ADAMFunSuite {
       fns = Iterable((vcb: VariantContextBuilder) => {
         vcb.id("firstName;secondName")
       }))
-    assert(v.getNames.length === 2)
+    assert(v.getNames.asScala.length === 2)
     assert(v.getNames.get(0) === "firstName")
     assert(v.getNames.get(1) === "secondName")
   }
@@ -1240,7 +1240,7 @@ class VariantContextConverterSuite extends ADAMFunSuite {
       }))
     assert(v.getFiltersApplied)
     assert(v.getFiltersPassed)
-    assert(v.getFiltersFailed.isEmpty)
+    assert(v.getFiltersFailed.asScala.isEmpty)
   }
 
   test("single filter applied and failed going htsjdk->adam") {
@@ -1259,12 +1259,12 @@ class VariantContextConverterSuite extends ADAMFunSuite {
     val v = buildVariant(Map.empty,
       converter.formatFilters,
       fns = Iterable((vcb: VariantContextBuilder) => {
-        vcb.filters(Set("FAILED1", "FAILED2", "FAILED3"))
+        vcb.filters(Set("FAILED1", "FAILED2", "FAILED3").asJava)
       }))
     assert(v.getFiltersApplied)
     assert(!v.getFiltersPassed)
     assert(v.getFiltersFailed.size === 3)
-    val failedSet = v.getFiltersFailed.toSet
+    val failedSet = v.getFiltersFailed.asScala.toSet
     assert(failedSet("FAILED1"))
     assert(failedSet("FAILED2"))
     assert(failedSet("FAILED3"))
@@ -1282,7 +1282,7 @@ class VariantContextConverterSuite extends ADAMFunSuite {
 
   test("set a single name adam->htsjdk") {
     val vc = converter.extractNames(Variant.newBuilder
-      .setNames(Seq("name"))
+      .setNames(Seq("name").asJava)
       .build, htsjdkSNVBuilder)
       .make
 
@@ -1292,7 +1292,7 @@ class VariantContextConverterSuite extends ADAMFunSuite {
 
   test("set multiple names adam->htsjdk") {
     val vc = converter.extractNames(Variant.newBuilder
-      .setNames(Seq("name1", "name2"))
+      .setNames(Seq("name1", "name2").asJava)
       .build, htsjdkSNVBuilder)
       .make
 
@@ -1361,29 +1361,29 @@ class VariantContextConverterSuite extends ADAMFunSuite {
     val vc = converter.extractFilters(Variant.newBuilder
       .setFiltersApplied(true)
       .setFiltersPassed(false)
-      .setFiltersFailed(Seq("FAILED"))
+      .setFiltersFailed(Seq("FAILED").asJava)
       .build, htsjdkSNVBuilder)
       .make
 
     assert(vc.filtersWereApplied)
     assert(vc.isFiltered)
     assert(vc.getFilters.size === 1)
-    assert(vc.getFilters.contains("FAILED"))
+    assert(vc.getFilters.asScala.contains("FAILED"))
   }
 
   test("multiple filters failed adam->htsjdk") {
     val vc = converter.extractFilters(Variant.newBuilder
       .setFiltersApplied(true)
       .setFiltersPassed(false)
-      .setFiltersFailed(Seq("FAILED1", "FAILED2"))
+      .setFiltersFailed(Seq("FAILED1", "FAILED2").asJava)
       .build, htsjdkSNVBuilder)
       .make
 
     assert(vc.filtersWereApplied)
     assert(vc.isFiltered)
     assert(vc.getFilters.size === 2)
-    assert(vc.getFilters.contains("FAILED1"))
-    assert(vc.getFilters.contains("FAILED2"))
+    assert(vc.getFilters.asScala.contains("FAILED1"))
+    assert(vc.getFilters.asScala.contains("FAILED2"))
   }
 
   def buildVariantAnnotation(
@@ -1490,7 +1490,7 @@ class VariantContextConverterSuite extends ADAMFunSuite {
 
   test("single allele count going htsjdk->adam") {
     val acList: java.util.List[java.lang.Integer] = List(
-      10).map(i => i: java.lang.Integer)
+      10).map(i => i: java.lang.Integer).asJava
     val va = buildVariantAnnotation(Map(("AC", acList)),
       converter.formatAlleleCount)
     assert(va.getAlleleCount === 10)
@@ -1498,7 +1498,7 @@ class VariantContextConverterSuite extends ADAMFunSuite {
 
   test("multiple allele counts going htsjdk->adam") {
     val acList: java.util.List[java.lang.Integer] = List(
-      10, 13, 16).map(i => i: java.lang.Integer)
+      10, 13, 16).map(i => i: java.lang.Integer).asJava
     val va = buildVariantAnnotation(Map(("AC", acList)),
       converter.formatAlleleCount,
       idx = 2)
@@ -1513,21 +1513,21 @@ class VariantContextConverterSuite extends ADAMFunSuite {
 
   test("single allele frequency going htsjdk->adam") {
     val acList: java.util.List[java.lang.Float] = List(
-      0.1f).map(i => i: java.lang.Float)
+      0.1f).map(i => i: java.lang.Float).asJava
     val va = buildVariantAnnotation(Map(("AF", acList)),
       converter.formatAlleleFrequency)
     assert(va.getAlleleFrequency > 0.09f && va.getAlleleFrequency < 0.11f)
   }
 
   test("single allele frequency is +Inf going htsjdk->adam") {
-    val acList: java.util.List[String] = List("+Inf")
+    val acList: java.util.List[String] = List("+Inf").asJava
     val va = buildVariantAnnotation(Map(("AF", acList)),
       converter.formatAlleleFrequency)
     assert(va.getAlleleFrequency == Float.PositiveInfinity)
   }
 
   test("single allele frequency is -Inf going htsjdk->adam") {
-    val acList: java.util.List[String] = List("-Inf")
+    val acList: java.util.List[String] = List("-Inf").asJava
     val va = buildVariantAnnotation(Map(("AF", acList)),
       converter.formatAlleleFrequency)
     assert(va.getAlleleFrequency == Float.NegativeInfinity)
@@ -1535,7 +1535,7 @@ class VariantContextConverterSuite extends ADAMFunSuite {
 
   test("multiple allele frequencies going htsjdk->adam") {
     val acList: java.util.List[java.lang.Float] = List(
-      0.1f, 0.01f, 0.001f).map(i => i: java.lang.Float)
+      0.1f, 0.01f, 0.001f).map(i => i: java.lang.Float).asJava
     val va = buildVariantAnnotation(Map(("AF", acList)),
       converter.formatAlleleFrequency,
       idx = 2)
@@ -1549,14 +1549,14 @@ class VariantContextConverterSuite extends ADAMFunSuite {
   }
 
   test("single CIGAR going htsjdk->adam") {
-    val acList: java.util.List[String] = List("10D90M")
+    val acList: java.util.List[String] = List("10D90M").asJava
     val va = buildVariantAnnotation(Map(("CIGAR", acList)),
       converter.formatCigar)
     assert(va.getCigar === "10D90M")
   }
 
   test("multiple CIGARs going htsjdk->adam") {
-    val acList: java.util.List[String] = List("10D90M", "100M", "90M10D")
+    val acList: java.util.List[String] = List("10D90M", "100M", "90M10D").asJava
     val va = buildVariantAnnotation(Map(("CIGAR", acList)),
       converter.formatCigar,
       idx = 2)
@@ -1572,7 +1572,7 @@ class VariantContextConverterSuite extends ADAMFunSuite {
 
   test("single read depth going htsjdk->adam") {
     val acList: java.util.List[java.lang.Integer] = List(
-      5, 10).map(i => i: java.lang.Integer)
+      5, 10).map(i => i: java.lang.Integer).asJava
     val va = buildVariantAnnotation(Map(("AD", acList)),
       converter.formatReadDepth)
     assert(va.getReferenceReadDepth === 5)
@@ -1581,7 +1581,7 @@ class VariantContextConverterSuite extends ADAMFunSuite {
 
   test("multiple read depths going htsjdk->adam") {
     val acList: java.util.List[java.lang.Integer] = List(
-      5, 10, 13, 16).map(i => i: java.lang.Integer)
+      5, 10, 13, 16).map(i => i: java.lang.Integer).asJava
     val va = buildVariantAnnotation(Map(("AD", acList)),
       converter.formatReadDepth,
       idx = 2)
@@ -1598,7 +1598,7 @@ class VariantContextConverterSuite extends ADAMFunSuite {
 
   test("single forward read depth going htsjdk->adam") {
     val acList: java.util.List[java.lang.Integer] = List(
-      5, 10).map(i => i: java.lang.Integer)
+      5, 10).map(i => i: java.lang.Integer).asJava
     val va = buildVariantAnnotation(Map(("ADF", acList)),
       converter.formatForwardReadDepth)
     assert(va.getReferenceForwardReadDepth === 5)
@@ -1607,7 +1607,7 @@ class VariantContextConverterSuite extends ADAMFunSuite {
 
   test("multiple forward read depths going htsjdk->adam") {
     val acList: java.util.List[java.lang.Integer] = List(
-      5, 10, 13, 16).map(i => i: java.lang.Integer)
+      5, 10, 13, 16).map(i => i: java.lang.Integer).asJava
     val va = buildVariantAnnotation(Map(("ADF", acList)),
       converter.formatForwardReadDepth,
       idx = 2)
@@ -1624,7 +1624,7 @@ class VariantContextConverterSuite extends ADAMFunSuite {
 
   test("single reverse read depth going htsjdk->adam") {
     val acList: java.util.List[java.lang.Integer] = List(
-      5, 10).map(i => i: java.lang.Integer)
+      5, 10).map(i => i: java.lang.Integer).asJava
     val va = buildVariantAnnotation(Map(("ADR", acList)),
       converter.formatReverseReadDepth)
     assert(va.getReferenceReverseReadDepth === 5)
@@ -1633,7 +1633,7 @@ class VariantContextConverterSuite extends ADAMFunSuite {
 
   test("multiple reverse read depths going htsjdk->adam") {
     val acList: java.util.List[java.lang.Integer] = List(
-      5, 10, 13, 16).map(i => i: java.lang.Integer)
+      5, 10, 13, 16).map(i => i: java.lang.Integer).asJava
     val va = buildVariantAnnotation(Map(("ADR", acList)),
       converter.formatReverseReadDepth,
       idx = 2)
@@ -2433,7 +2433,7 @@ class VariantContextConverterSuite extends ADAMFunSuite {
     val vcb = htsjdkSNVBuilder
     val gt = GenotypeBuilder.create("NA12878",
       vcb.getAlleles(),
-      Map[String, java.lang.Object](("ONE_INT", "42")))
+      Map[String, java.lang.Object](("ONE_INT", "42")).asJava)
     val vc = vcb.genotypes(gt)
       .make
 
@@ -2456,7 +2456,7 @@ class VariantContextConverterSuite extends ADAMFunSuite {
     val vcb = htsjdkSNVBuilder
     val gt = GenotypeBuilder.create("NA12878",
       vcb.getAlleles(),
-      Map[String, java.lang.Object](("FOUR_INTS", "5,10,15,20")))
+      Map[String, java.lang.Object](("FOUR_INTS", "5,10,15,20")).asJava)
     val vc = vcb.genotypes(gt)
       .make
 
@@ -2479,7 +2479,7 @@ class VariantContextConverterSuite extends ADAMFunSuite {
     val vcb = htsjdkSNVBuilder
     val gt = GenotypeBuilder.create("NA12878",
       vcb.getAlleles(),
-      Map[String, java.lang.Object](("FOUR_FLOATS", "5.0,10.1,15.2,20.3")))
+      Map[String, java.lang.Object](("FOUR_FLOATS", "5.0,10.1,15.2,20.3")).asJava)
     val vc = vcb.genotypes(gt)
       .make
 
@@ -2502,7 +2502,7 @@ class VariantContextConverterSuite extends ADAMFunSuite {
     val vcb = htsjdkSNVBuilder
     val gt = GenotypeBuilder.create("NA12878",
       vcb.getAlleles(),
-      Map[String, java.lang.Object](("A_INT", "10,15,20")))
+      Map[String, java.lang.Object](("A_INT", "10,15,20")).asJava)
     val vc = vcb.genotypes(gt)
       .make
 
@@ -2525,7 +2525,7 @@ class VariantContextConverterSuite extends ADAMFunSuite {
     val vcb = htsjdkSNVBuilder
     val gt = GenotypeBuilder.create("NA12878",
       vcb.getAlleles(),
-      Map[String, java.lang.Object](("R_INT", "5,10,15,20")))
+      Map[String, java.lang.Object](("R_INT", "5,10,15,20")).asJava)
     val vc = vcb.genotypes(gt)
       .make
 
@@ -2548,7 +2548,7 @@ class VariantContextConverterSuite extends ADAMFunSuite {
     val vcb = htsjdkSNVBuilder
     val gt = GenotypeBuilder.create("NA12878",
       vcb.getAlleles(),
-      Map[String, java.lang.Object](("R_STRING", "foo,bar,baz")))
+      Map[String, java.lang.Object](("R_STRING", "foo,bar,baz")).asJava)
     val vc = vcb.genotypes(gt)
       .make
 
@@ -2571,7 +2571,7 @@ class VariantContextConverterSuite extends ADAMFunSuite {
     val vcb = htsjdkSNVBuilder
     val gt = GenotypeBuilder.create("NA12878",
       vcb.getAlleles(),
-      Map[String, java.lang.Object](("STRING_G", "foo,bar,baz")))
+      Map[String, java.lang.Object](("STRING_G", "foo,bar,baz")).asJava)
     val vc = vcb.genotypes(gt)
       .make
 

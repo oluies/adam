@@ -24,6 +24,14 @@ SOURCE_DIR=$(dirname ${BASH_SOURCE[0]})
 
 # Find ADAM cli assembly jar
 ADAM_CLI_JAR=
+
+# Source checkout built with ./mill adam-assembly.assembly
+MILL_ASSEMBLY_JAR="$ADAM_HOME/out/adam-assembly/assembly.dest/out.jar"
+if [ ! -d "$ADAM_HOME/repo" ] && [ ! -d "$ADAM_HOME/jars" ] && [ -f "$MILL_ASSEMBLY_JAR" ]; then
+  echo "$MILL_ASSEMBLY_JAR"
+  exit 0
+fi
+
 if [ -d "$ADAM_HOME/repo" ]; then
   ASSEMBLY_DIR="$ADAM_HOME/repo"
 elif [ -d "$ADAM_HOME/jars" ]; then
@@ -37,7 +45,7 @@ num_jars=$(echo ${ASSEMBLY_JARS} | wc -w)
 
 if [ "$num_jars" -eq "0" ]; then
   echo "Failed to find ADAM cli assembly in $ASSEMBLY_DIR." 1>&2
-  echo "You need to build ADAM before running this program." 1>&2
+  echo "You need to build ADAM (./mill adam-assembly.assembly) before running this program." 1>&2
   exit 1
 fi
 

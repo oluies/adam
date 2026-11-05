@@ -231,13 +231,13 @@ class SortedGenomicDatasetSuite extends SparkFunSuite {
     }
 
     val genotypes =
-      GenotypeDataset(sc.parallelize(genotypeBuilder),
+      GenotypeDataset(sc.parallelize(genotypeBuilder.toSeq),
         sd, Seq(), DefaultHeaderLines.allHeaderLines)
         .sortLexicographically(storePartitionMap = true, partitions = 2)
     genotypes.rdd.mapPartitionsWithIndex((idx, iter) => {
       iter.map(f => (idx, f))
     }).collect
-    val features = FeatureDataset(sc.parallelize(featureBuilder), sd, Seq.empty)
+    val features = FeatureDataset(sc.parallelize(featureBuilder.toSeq), sd, Seq.empty)
     val x = features.copartitionByReferenceRegion(genotypes)
     val z = x.rdd.mapPartitionsWithIndex((idx, iter) => {
       if (idx == 0 && iter.size != 6) {

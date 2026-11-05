@@ -20,7 +20,7 @@ package org.bdgenomics.adam.models
 import htsjdk.samtools.SAMFileHeader
 import org.bdgenomics.adam.ds.ADAMContext
 import org.bdgenomics.adam.ds.read.AlignmentDataset
-import scala.collection.JavaConversions._
+import scala.jdk.CollectionConverters._
 
 /**
  * @deprecated no longer necessary, SAMFileHeader implements Serializable
@@ -56,11 +56,11 @@ private[adam] class SAMFileHeaderWritable private (hdr: SAMFileHeader) extends S
   private val sd = SequenceDictionary(hdr.getSequenceDictionary)
   private val pgl = {
     val pgs = hdr.getProgramRecords
-    pgs.map(ADAMContext.convertSAMProgramRecord)
+    pgs.asScala.map(ADAMContext.convertSAMProgramRecord).toSeq
   }
   private val comments = {
     val cmts = hdr.getComments
-    cmts.flatMap(Option(_)) // don't trust samtools to return non-nulls
+    cmts.asScala.flatMap(Option(_)).toSeq // don't trust samtools to return non-nulls
   }
   private val rgs = ReadGroupDictionary.fromSAMHeader(hdr)
 

@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # do we have enough arguments?
-if [ $# < 4 ]; then
+if [ $# -lt 3 ]; then
     echo "Usage:"
     echo
     echo "./release.sh <release version> <development version> <milestone id>"
@@ -17,7 +17,12 @@ milestone=$3
 branch=$(git status -bs | awk '{ print $2 }' | awk -F'.' '{ print $1 }' | head -n 1)
 
 # update changelog per Github milestone
-mvn com.github.heuermh.maven.plugin.changes:github-changes-maven-plugin:1.2:github-changes -DmilestoneId=${milestone}
+echo "## Version ${release}" > CHANGES.new
+gh issue list --repo bigdatagenomics/adam --state closed --milestone "${milestone}" --limit 1000 \
+  --json number,title,url --template '{{range .}}* {{.title}} [\#{{.number}}]({{.url}}){{"\n"}}{{end}}' >> CHANGES.new
+echo >> CHANGES.new
+cat CHANGES.md >> CHANGES.new
+mv CHANGES.new CHANGES.md
 git commit -a -m "Modifying changelog."
 
 # update R version
@@ -29,30 +34,28 @@ echo "releasing from ${commit} on branch ${branch}"
 
 git push origin ${branch}
 
-# do spark 3, scala 2.12 release
-git checkout -b maint_spark3_2.12-${release} ${branch}
+# do spark 4, scala 2.13 release
+git checkout -b maint_spark4_2.13-${release} ${branch}
 
-mvn --batch-mode \
-  -P distribution \
-  -Dresume=false \
-  -Dtag=adam-parent-spark3_2.12-${release} \
-  -DreleaseVersion=${release} \
-  -DdevelopmentVersion=${devel} \
-  -DbranchName=adam-spark3_2.12-${release} \
-  release:clean \
-  release:prepare \
-  release:perform
+sed -i -e "s/  val adam = \".*\"/  val adam = \"${release}\"/" build.mill
+git commit -a -m "Setting version to ${release}."
+git tag adam-parent-spark4_2.13-${release}
+
+./mill --ticker false __.test && \
+  ./mill --ticker false mill.javalib.SonatypeCentralPublishModule/ && \
+  ./mill --ticker false adam-distribution.dist
 
 if [ $? != 0 ]; then
-  echo "Releasing Spark 3, Scala 2.12 version failed."
+  echo "Releasing Spark 4, Scala 2.13 version failed."
   exit 1
 fi
+
+git push origin maint_spark4_2.13-${release} adam-parent-spark4_2.13-${release}
 
 if [ $branch = "master" ]; then
   # if original branch was master, update versions on original branch
   git checkout ${branch}
-  mvn versions:set -DnewVersion=${devel} \
-    -DgenerateBackupPoms=false
-  git commit -a -m "Modifying pom.xml files for new development after ${release} release."
+  sed -i -e "s/  val adam = \".*\"/  val adam = \"${devel}\"/" build.mill
+  git commit -a -m "Modifying build.mill for new development after ${release} release."
   git push origin ${branch}
 fi

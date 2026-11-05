@@ -42,8 +42,7 @@ trait Generator {
       "*/",
       "package %s".format(packageName),
       "",
-      "import scala.collection.JavaConversions._",
-      "import scala.collection.JavaConverters._").mkString("\n")
+      "import scala.jdk.CollectionConverters._").mkString("\n")
 
     fw.write(hdr)
   }

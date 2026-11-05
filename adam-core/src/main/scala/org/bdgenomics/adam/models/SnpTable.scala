@@ -48,7 +48,7 @@ class SnpTable private[models] (
     indices.mapValues(p => {
       val (start, end) = p
       pow2ceil(end - start + 1)
-    })
+    }).toMap
   }
 
   @tailrec private def binarySearch(rr: ReferenceRegion,

@@ -32,7 +32,7 @@ import org.bdgenomics.adam.models.{
 }
 import org.bdgenomics.adam.ds.{ InFormatter, InFormatterCompanion }
 import org.bdgenomics.adam.sql.{ VariantContext => VariantContextProduct }
-import scala.collection.JavaConversions._
+import scala.jdk.CollectionConverters._
 
 /**
  * InFormatter companion that builds a VCFInFormatter to write VCF to a pipe.
@@ -82,7 +82,7 @@ case class VCFInFormatter private (
       .unsetOption(Options.INDEX_ON_THE_FLY)
       .build()
 
-    val header = new VCFHeader(headerLines.toSet, samples)
+    val header = new VCFHeader(headerLines.toSet.asJava, samples.asJava)
     header.setSequenceDictionary(sequences.toSAMSequenceDictionary)
     writer.writeHeader(header)
 

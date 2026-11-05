@@ -21,7 +21,7 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.broadcast.Broadcast
 import org.bdgenomics.formats.avro.{ Alphabet, Sequence, Slice }
 import scala.collection.immutable.SortedMap
-import scala.collection.mutable.MutableList
+import scala.collection.mutable.ListBuffer
 
 /**
  * FASTA format description line.
@@ -269,7 +269,7 @@ private[adam] object FastaSliceConverter {
   private def slice(sequences: Seq[String], maximumLength: Long): Seq[String] = {
     // internal "fsm" variables
     var sequence: StringBuilder = new StringBuilder
-    var sequenceSeq: MutableList[String] = MutableList()
+    var sequenceSeq: ListBuffer[String] = ListBuffer()
 
     /**
      * Adds a string slice to our accumulator. If this string slice causes the accumulator
@@ -296,6 +296,6 @@ private[adam] object FastaSliceConverter {
     }
 
     // return our slices
-    sequenceSeq
+    sequenceSeq.toSeq
   }
 }

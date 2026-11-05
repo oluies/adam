@@ -25,7 +25,7 @@ import htsjdk.samtools.{
 import htsjdk.variant.utils.SAMSequenceDictionaryExtractor
 import htsjdk.variant.vcf.VCFFileReader
 import org.bdgenomics.adam.util.ADAMFunSuite
-import scala.collection.JavaConversions._
+import scala.jdk.CollectionConverters._
 
 class SequenceDictionarySuite extends ADAMFunSuite {
   test("Convert from sam sequence record and back") {
@@ -188,7 +188,7 @@ class SequenceDictionarySuite extends ADAMFunSuite {
 
     val srs = List(sr0)
 
-    val ssd = new SAMSequenceDictionary(srs)
+    val ssd = new SAMSequenceDictionary(srs.asJava)
 
     val asd = SequenceDictionary.fromSAMSequenceDictionary(ssd)
 
@@ -238,7 +238,7 @@ class SequenceDictionarySuite extends ADAMFunSuite {
       SequenceRecord("X", 1000L))).sorted
 
     val filtered = sd.filterToReferenceName("X")
-    assert(filtered.records.size() === 1)
+    assert(filtered.records.size === 1)
     assert(filtered.containsReferenceName("X"))
     assert(filtered("X").exists(_.name === "X"))
   }
@@ -252,7 +252,7 @@ class SequenceDictionarySuite extends ADAMFunSuite {
       SequenceRecord("X", 1000L))).sorted
 
     val filtered = sd.filterToReferenceNames(Seq("1", "X"))
-    assert(filtered.records.size() === 2)
+    assert(filtered.records.size === 2)
     assert(filtered.containsReferenceName("1"))
     assert(filtered.containsReferenceName("X"))
     assert(filtered("1").exists(_.name === "1"))
@@ -268,7 +268,7 @@ class SequenceDictionarySuite extends ADAMFunSuite {
       SequenceRecord("HLA-DRB1*16:02:01", 1000L))).sorted
 
     val filtered = sd.filterToReferenceNames(_.length() == 1)
-    assert(filtered.records.size() == 4)
+    assert(filtered.records.size == 4)
     assert(filtered.containsReferenceName("1"))
     assert(filtered.containsReferenceName("HLA-DRB1*16:02:01") === false)
     assert(filtered("1").exists(_.name === "1"))

@@ -24,7 +24,7 @@ import org.bdgenomics.formats.avro.{
   Alignment,
   Fragment
 }
-import scala.collection.JavaConversions._
+import scala.jdk.CollectionConverters._
 
 /**
  * Utility class for converting FASTQ formatted data.
@@ -254,7 +254,7 @@ private[adam] class FastqRecordConverter extends Serializable with Logging {
     // build and return record
     Fragment.newBuilder
       .setName(firstReadName)
-      .setAlignments(alignments)
+      .setAlignments(alignments.asJava)
       .build
   }
 

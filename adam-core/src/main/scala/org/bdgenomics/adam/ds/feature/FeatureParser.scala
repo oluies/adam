@@ -21,7 +21,7 @@ import grizzled.slf4j.Logging
 import htsjdk.samtools.ValidationStringency
 import org.bdgenomics.adam.models.SequenceRecord
 import org.bdgenomics.formats.avro.Feature
-import scala.collection.JavaConversions._
+import scala.jdk.CollectionConverters._
 import scala.collection.mutable.ArrayBuffer
 
 private[ds] sealed trait FeatureParser extends Serializable with Logging {
@@ -351,7 +351,7 @@ private[ds] class BEDParser extends FeatureParser {
     if (hasColumn(11)) attributes += ("blockStarts" -> fields(11))
 
     val attrMap = attributes.toMap
-    f.setAttributes(attrMap)
+    f.setAttributes(attrMap.asJava)
 
     Some(f.build())
   }
@@ -404,7 +404,7 @@ private[ds] class NarrowPeakParser extends FeatureParser {
     if (hasColumn(9)) attributes += ("peak" -> fields(9))
 
     val attrMap = attributes.toMap
-    f.setAttributes(attrMap)
+    f.setAttributes(attrMap.asJava)
 
     Some(f.build())
   }

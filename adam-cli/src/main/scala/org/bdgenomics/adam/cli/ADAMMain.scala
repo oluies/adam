@@ -18,7 +18,7 @@
 package org.bdgenomics.adam.cli
 
 import java.util.logging.Level._
-import javax.inject.Inject
+import jakarta.inject.Inject
 import com.google.inject.AbstractModule
 import net.codingwell.scalaguice.ScalaModule
 import grizzled.slf4j.Logging

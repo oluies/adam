@@ -33,7 +33,7 @@ import org.bdgenomics.formats.avro.{
   Fragment
 }
 import org.scalatest.FunSuite
-import scala.collection.JavaConversions._
+import scala.jdk.CollectionConverters._
 
 class AlignmentConverterSuite extends FunSuite {
 
@@ -168,7 +168,7 @@ class AlignmentConverterSuite extends FunSuite {
     val newSAMReader = SamReaderFactory.makeDefault().open(SAMTestFile)
 
     // Obtain SAMRecord
-    val newSAMRecord = newSAMReader.iterator().dropWhile(r => r.getReadName != readName)
+    val newSAMRecord = newSAMReader.iterator().asScala.dropWhile(r => r.getReadName != readName)
     val firstRecord = alignmentConverter.convert(newSAMRecord.next())
     val secondRecord = alignmentConverter.convert(newSAMRecord.next())
     (firstRecord, secondRecord)
@@ -271,7 +271,7 @@ class AlignmentConverterSuite extends FunSuite {
 
     val fragment = Fragment.newBuilder()
       .setName("testRead")
-      .setAlignments(seqAsJavaList(alignments))
+      .setAlignments(alignments.asJava)
       .build()
 
     val reads = adamRecordConverter.convertFragment(fragment)
@@ -308,7 +308,7 @@ class AlignmentConverterSuite extends FunSuite {
       .build())
     val fragment = Fragment.newBuilder()
       .setName("testRead")
-      .setAlignments(seqAsJavaList(alignments))
+      .setAlignments(alignments.asJava)
       .build()
 
     val reads = adamRecordConverter.convertFragment(fragment)
@@ -332,7 +332,7 @@ class AlignmentConverterSuite extends FunSuite {
       .setReadMapped(false)
       .setReadNegativeStrand(true)
       .build()
-    val fragment = Fragment.newBuilder().setAlignments(List(record)).build()
+    val fragment = Fragment.newBuilder().setAlignments(List(record).asJava).build()
     val converted = adamRecordConverter.convertFragment(fragment)
     assert(converted.head.getReadNegativeStrand)
   }
@@ -415,7 +415,7 @@ class AlignmentConverterSuite extends FunSuite {
 
     // Obtain SAMRecord
     val newSAMRecordIter = {
-      val samIter = asScalaIterator(newSAMReader.iterator())
+      val samIter = newSAMReader.iterator().asScala
       samIter.toIterable.dropWhile(!_.getReadUnmappedFlag)
     }
     val newSAMRecord = newSAMRecordIter.toIterator.next()

@@ -20,9 +20,7 @@ package org.bdgenomics.adam.models
 import htsjdk.samtools.{ SAMFileHeader, SAMSequenceDictionary, SAMSequenceRecord }
 import htsjdk.variant.vcf.VCFHeader
 import org.bdgenomics.formats.avro.{ Reference, Sequence, Slice }
-import scala.collection.JavaConversions.asScalaIterator
-import scala.collection.JavaConverters._
-import scala.collection._
+import scala.jdk.CollectionConverters._
 
 /**
  * Singleton object for creating SequenceDictionaries.
@@ -49,7 +47,7 @@ object SequenceDictionary {
    * @return A SequenceDictionary with populated sequence records.
    */
   def apply(dict: SAMSequenceDictionary): SequenceDictionary = {
-    new SequenceDictionary(dict.getSequences.iterator().map(SequenceRecord.fromSAMSequenceRecord).toVector)
+    new SequenceDictionary(dict.getSequences.asScala.iterator.map(SequenceRecord.fromSAMSequenceRecord).toVector)
   }
 
   /**
@@ -99,7 +97,7 @@ object SequenceDictionary {
    */
   def fromSAMSequenceDictionary(samDict: SAMSequenceDictionary): SequenceDictionary = {
     val samDictRecords = samDict.getSequences
-    new SequenceDictionary(samDictRecords.iterator().map(SequenceRecord.fromSAMSequenceRecord).toVector)
+    new SequenceDictionary(samDictRecords.asScala.iterator.map(SequenceRecord.fromSAMSequenceRecord).toVector)
   }
 }
 

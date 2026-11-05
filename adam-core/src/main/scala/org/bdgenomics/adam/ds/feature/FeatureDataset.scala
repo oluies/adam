@@ -36,7 +36,7 @@ import org.bdgenomics.utils.interval.array.{
   IntervalArray,
   IntervalArraySerializer
 }
-import scala.collection.JavaConversions._
+import scala.jdk.CollectionConverters._
 import scala.math.max
 import scala.reflect.ClassTag
 import scala.reflect.runtime.universe._
@@ -199,10 +199,10 @@ object FeatureDataset {
     val name = Features.nameOf(feature)
     val score = Option(feature.getScore).map(_.toInt).getOrElse(".")
     val strand = Features.asString(feature.getStrand)
-    val signalValue = feature.getAttributes.getOrElse("signalValue", "0")
-    val pValue = feature.getAttributes.getOrElse("pValue", "-1")
-    val qValue = feature.getAttributes.getOrElse("qValue", "-1")
-    val peak = feature.getAttributes.getOrElse("peak", "-1")
+    val signalValue = feature.getAttributes.asScala.getOrElse("signalValue", "0")
+    val pValue = feature.getAttributes.asScala.getOrElse("pValue", "-1")
+    val qValue = feature.getAttributes.asScala.getOrElse("qValue", "-1")
+    val peak = feature.getAttributes.asScala.getOrElse("peak", "-1")
     List(chrom, start, end, name, score, strand, signalValue, pValue, qValue, peak).mkString("\t")
   }
 
@@ -242,12 +242,12 @@ object FeatureDataset {
       List(chrom, start, end, name, score, strand).mkString("\t")
     } else {
       // write BED12 format
-      val thickStart = feature.getAttributes.getOrElse("thickStart", ".")
-      val thickEnd = feature.getAttributes.getOrElse("thickEnd", ".")
-      val itemRgb = feature.getAttributes.getOrElse("itemRgb", ".")
-      val blockCount = feature.getAttributes.getOrElse("blockCount", ".")
-      val blockSizes = feature.getAttributes.getOrElse("blockSizes", ".")
-      val blockStarts = feature.getAttributes.getOrElse("blockStarts", ".")
+      val thickStart = feature.getAttributes.asScala.getOrElse("thickStart", ".")
+      val thickEnd = feature.getAttributes.asScala.getOrElse("thickEnd", ".")
+      val itemRgb = feature.getAttributes.asScala.getOrElse("itemRgb", ".")
+      val blockCount = feature.getAttributes.asScala.getOrElse("blockCount", ".")
+      val blockSizes = feature.getAttributes.asScala.getOrElse("blockSizes", ".")
+      val blockStarts = feature.getAttributes.asScala.getOrElse("blockStarts", ".")
       List(chrom, start, end, name, score, strand, thickStart, thickEnd, itemRgb, blockCount, blockSizes, blockStarts).mkString("\t")
     }
   }
@@ -559,7 +559,7 @@ sealed abstract class FeatureDataset extends AvroGenomicDataset[Feature, Feature
    * @return FeatureDataset filtered by the specified feature types.
    */
   def filterToFeatureTypes(featureTypes: java.util.List[String]): FeatureDataset = {
-    filterToFeatureTypes(asScalaBuffer(featureTypes))
+    filterToFeatureTypes(featureTypes.asScala.toSeq)
   }
 
   /**
@@ -589,7 +589,7 @@ sealed abstract class FeatureDataset extends AvroGenomicDataset[Feature, Feature
    * @return FeatureDataset filtered by the specified genes.
    */
   def filterToGenes(geneIds: java.util.List[String]): FeatureDataset = {
-    filterToGenes(asScalaBuffer(geneIds))
+    filterToGenes(geneIds.asScala.toSeq)
   }
 
   /**
@@ -619,7 +619,7 @@ sealed abstract class FeatureDataset extends AvroGenomicDataset[Feature, Feature
    * @return FeatureDataset filtered by the specified transcripts.
    */
   def filterToTranscripts(transcriptIds: java.util.List[String]): FeatureDataset = {
-    filterToTranscripts(asScalaBuffer(transcriptIds))
+    filterToTranscripts(transcriptIds.asScala.toSeq)
   }
 
   /**
@@ -649,7 +649,7 @@ sealed abstract class FeatureDataset extends AvroGenomicDataset[Feature, Feature
    * @return FeatureDataset filtered by the specified exons.
    */
   def filterToExons(exonIds: java.util.List[String]): FeatureDataset = {
-    filterToExons(asScalaBuffer(exonIds))
+    filterToExons(exonIds.asScala.toSeq)
   }
 
   /**
@@ -679,7 +679,7 @@ sealed abstract class FeatureDataset extends AvroGenomicDataset[Feature, Feature
    * @return FeatureDataset filtered by the specified proteins.
    */
   def filterToProteins(proteinIds: java.util.List[String]): FeatureDataset = {
-    filterToProteins(asScalaBuffer(proteinIds))
+    filterToProteins(proteinIds.asScala.toSeq)
   }
 
   /**
@@ -719,7 +719,7 @@ sealed abstract class FeatureDataset extends AvroGenomicDataset[Feature, Feature
    * @return FeatureDataset filtered by the specified parents.
    */
   def filterToParents(parentIds: java.util.List[String]): FeatureDataset = {
-    filterToParents(asScalaBuffer(parentIds))
+    filterToParents(parentIds.asScala.toSeq)
   }
 
   /**
@@ -729,7 +729,7 @@ sealed abstract class FeatureDataset extends AvroGenomicDataset[Feature, Feature
    * @return FeatureDataset filtered by the specified parents.
    */
   def filterToParents(parentIds: Seq[String]): FeatureDataset = {
-    transform((rdd: RDD[Feature]) => rdd.filter(f => Option(f.getParentIds).exists(!Collections.disjoint(_, parentIds))))
+    transform((rdd: RDD[Feature]) => rdd.filter(f => Option(f.getParentIds).exists(!Collections.disjoint(_, parentIds.asJava))))
   }
 
   /**

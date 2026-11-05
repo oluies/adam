@@ -1,21 +1,23 @@
 Building ADAM from Source
 =========================
 
-You will need to have `Apache Maven <http://maven.apache.org/>`__
-version 3.3.9 or later installed in order to build ADAM.
+ADAM builds with `Mill <https://mill-build.org>`__. The ``./mill``
+launcher script in the repository downloads Mill and the JDK it needs.
 
 .. code:: bash
 
     git clone https://github.com/bigdatagenomics/adam.git
     cd adam
-    mvn install
+    ./mill __.compile
+    ./mill __.test
+    ./mill adam-assembly.assembly
 
 
 Running ADAM
 ------------
 
 ADAM is packaged as an
-`überjar <https://maven.apache.org/plugins/maven-shade-plugin/>`__ and
+überjar (``./mill adam-assembly.assembly``) and
 includes all necessary dependencies, except for Apache Hadoop and Apache
 Spark.
 
@@ -35,7 +37,7 @@ will need to have the Spark binaries on your system; prebuilt binaries
 can be downloaded from the `Spark
 website <http://spark.apache.org/downloads.html>`__.
 
-As of ADAM version 0.37.0, Spark version 3.2.0 or later is required.
+As of ADAM version 2.0.0, Spark version 4.0.0 or later (Scala 2.13, Java 17 or later) is required.
 
 Once this alias is in place, you can run ADAM by simply typing
 ``adam-submit`` at the command line.
@@ -48,16 +50,15 @@ Building for Python
 -------------------
 
 ADAM can be installed using the Pip package manager, or from source.
-To build and test `ADAM's Python bindings <#python>`__, enable the
-``python`` profile:
+To build and test `ADAM's Python bindings <#python>`__, run:
 
 .. code:: bash
 
-    mvn -P python package
+    ./mill adam-python.develop
+    ./mill adam-python.pytest
 
-This will enable the ``adam-python`` module as part of the ADAM build.
-This module uses Maven to invoke a Makefile that builds a Python egg and
-runs tests. To build this module, we require either an active
+These Mill commands invoke the ``adam-python`` Makefile, which builds a
+Python egg and runs tests. To build this module, we require either an active
 `Conda <https://conda.io/>`__ or
 `virtualenv <https://virtualenv.pypa.io/en/stable/>`__ environment.
 
@@ -90,9 +91,8 @@ PySpark. This can be done with the following bash commands:
     export PYTHONPATH=${SPARK_HOME}/python:${SPARK_HOME}/python/lib/${PY4J_ZIP}:${PYTHONPATH}
 
     # put adam jar on the pyspark path
-    ASSEMBLY_DIR="${ADAM_HOME}/adam-assembly/target"
-    ASSEMBLY_JAR="$(ls -1 "$ASSEMBLY_DIR" | grep "^adam[0-9A-Za-z\.\_-]*\.jar$" | grep -v -e javadoc -e sources || true)"
-    export PYSPARK_SUBMIT_ARGS="--jars ${ASSEMBLY_DIR}/${ASSEMBLY_JAR} --driver-class-path ${ASSEMBLY_DIR}/${ASSEMBLY_JAR} pyspark-shell"
+    ASSEMBLY_JAR="$("${ADAM_HOME}/bin/find-adam-assembly.sh")"
+    export PYSPARK_SUBMIT_ARGS="--jars ${ASSEMBLY_JAR} --driver-class-path ${ASSEMBLY_JAR} pyspark-shell"
 
 This assumes that the `ADAM JARs have already been
 built <#build-from-source>`__. Additionally, we require
@@ -108,15 +108,13 @@ active virtualenv or Conda environment, run:
 Building for R
 --------------
 
-ADAM supports SparkR, for Spark 2.1.0 and onwards. To build and test
-`ADAM's R bindings <#r>`__, enable the ``r`` profile:
+ADAM supports SparkR. To build and test `ADAM's R bindings <#r>`__, run:
 
 .. code:: bash
 
-    mvn -P r package
+    ./mill adam-r.check
 
-This will enable the ``adam-r`` module as part of the ADAM build. This
-module uses Maven to invoke the ``R`` executable to build the
+This Mill command invokes the ``R`` executable to build the
 ``bdg.adam`` package and run tests. The build requires the ``testthat``,
 ``devtools`` and ``roxygen`` packages
 
@@ -133,11 +131,11 @@ Installation of ``devtools`` may require ``libgit2`` as a dependency.
     apt-get install libgit2-dev
 
 The build also requires you to have the ``SparkR`` package installed,
-where ``v3.x.x`` should match your Spark version.
+where ``v4.x.x`` should match your Spark version.
 
 .. code:: bash
 
-   R -e "devtools::install_github('apache/spark@v3.x.x', subdir='R/pkg')"
+   R -e "devtools::install_github('apache/spark@v4.x.x', subdir='R/pkg')"
 
 The ADAM JARs can then be provided to ``SparkR`` with the following bash
 commands:
@@ -145,11 +143,10 @@ commands:
 .. code:: bash
 
     # put adam jar on the SparkR path
-    ASSEMBLY_DIR="${ADAM_HOME}/adam-assembly/target"
-    ASSEMBLY_JAR="$(ls -1 "$ASSEMBLY_DIR" | grep "^adam[0-9A-Za-z\_\.-]*\.jar$" | grep -v javadoc | grep -v sources || true)"
-    export SPARKR_SUBMIT_ARGS="--jars ${ASSEMBLY_DIR}/${ASSEMBLY_JAR} --driver-class-path ${ASSEMBLY_DIR}/${ASSEMBLY_JAR} sparkr-shell"
+    ASSEMBLY_JAR="$("${ADAM_HOME}/bin/find-adam-assembly.sh")"
+    export SPARKR_SUBMIT_ARGS="--jars ${ASSEMBLY_JAR} --driver-class-path ${ASSEMBLY_JAR} sparkr-shell"
 
-Note that the ``ASSEMBLY_DIR`` and ``ASSEMBLY_JAR`` lines are the same
+Note that the ``ASSEMBLY_JAR`` line is the same
 as for the `Python build <#python-build>`__. As with the Python build,
 this assumes that the `ADAM JARs have already been
 built <#build-from-source>`__.
