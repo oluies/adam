@@ -51,8 +51,9 @@ class AvroSerializer[T <: SpecificRecord: ClassTag] extends Serializer[T] {
   def write(kryo: Kryo, kryoOut: Output, record: T) = {
     outstream.reset()
     writer.write(record, encoder)
-    kryoOut.writeInt(outstream.array.length, true)
-    kryoOut.write(outstream.array)
+    // outstream.array is the whole backing buffer; only the first length bytes hold this record
+    kryoOut.writeInt(outstream.length, true)
+    kryoOut.write(outstream.array, 0, outstream.length)
   }
 
   def read(kryo: Kryo, kryoIn: Input, klazz: Class[T]): T = this.synchronized {

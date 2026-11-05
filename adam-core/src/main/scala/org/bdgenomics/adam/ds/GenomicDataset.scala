@@ -387,7 +387,7 @@ trait GenomicDataset[T, U <: Product, V <: GenomicDataset[T, U, V]] extends Logg
       .write
       .partitionBy("referenceName", "positionBin")
       .format("parquet")
-      .option("spark.sql.parquet.compression.codec", compressionCodec.toString.toLowerCase())
+      .option("compression", compressionCodec.toString.toLowerCase())
       .save(pathName)
     writePartitionedParquetFlag(pathName, partitionSize)
     saveMetadata(pathName)
@@ -3110,7 +3110,7 @@ sealed abstract class GenericGenomicDataset[T, U <: Product] extends GenomicData
     dataset.toDF()
       .write
       .format("parquet")
-      .option("spark.sql.parquet.compression.codec", compressionCodec.toString.toLowerCase())
+      .option("compression", compressionCodec.toString.toLowerCase())
       .save(pathName)
   }
 

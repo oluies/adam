@@ -73,33 +73,41 @@ class PrintADAM(protected val args: PrintADAMArgs) extends BDGSparkCommand[Print
    * Display any Parquet file using JSON
    */
   def displayRaw(sc: SparkContext, file: String, pretty: Boolean = false, output: Option[String] = None) {
-    withPrintStream(output)(out => {
-      val it = new ParquetFileTraversable[IndexedRecord](sc, file)
-      pretty match {
-        case true =>
-          it.headOption match {
-            case None => out.print("")
-            case Some(hd) =>
-              val schema = hd.getSchema
-              val writer = new GenericDatumWriter[Object](schema)
-              val encoder = EncoderFactory.get().jsonEncoder(schema, out)
-              it.foreach(pileup => {
-                writer.write(pileup, encoder)
-              })
-          }
-        case false =>
-          it.foreach(pileup => {
-            out.println(pileup.toString)
-          })
-      }
-    })
+    withPrintStream(output)(out => printRaw(sc, file, pretty, out))
+  }
+
+  private def printRaw(sc: SparkContext, file: String, pretty: Boolean, out: java.io.PrintStream): Unit = {
+    val it = new ParquetFileTraversable[IndexedRecord](sc, file)
+    pretty match {
+      case true =>
+        it.headOption match {
+          case None => out.print("")
+          case Some(hd) =>
+            val schema = hd.getSchema
+            val writer = new GenericDatumWriter[Object](schema)
+            val encoder = EncoderFactory.get().jsonEncoder(schema, out)
+            it.foreach(pileup => {
+              writer.write(pileup, encoder)
+            })
+            // the JSON encoder buffers, so flush before the stream is closed
+            encoder.flush()
+            out.println()
+        }
+      case false =>
+        it.foreach(pileup => {
+          out.println(pileup.toString)
+        })
+    }
   }
 
   def run(sc: SparkContext) {
     val output = Option(args.outputFile)
     output.foreach(checkWriteablePath(_, sc.hadoopConfiguration))
-    args.filesToPrint.asScala.foreach(file => {
-      displayRaw(sc, file, pretty = args.prettyRaw, output = output)
+    // open the output once, so that every input file ends up in it
+    withPrintStream(output)(out => {
+      args.filesToPrint.asScala.foreach(file => {
+        printRaw(sc, file, pretty = args.prettyRaw, out)
+      })
     })
   }
 }
