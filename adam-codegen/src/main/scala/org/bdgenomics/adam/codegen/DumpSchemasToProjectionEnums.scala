@@ -20,7 +20,7 @@ package org.bdgenomics.adam.codegen
 import java.io.{ File, FileWriter }
 import org.apache.avro.Schema
 import org.apache.avro.reflect.ReflectData
-import scala.collection.JavaConversions._
+import scala.jdk.CollectionConverters._
 
 object DumpSchemasToProjectionEnums {
 
@@ -32,7 +32,7 @@ object DumpSchemasToProjectionEnums {
 class DumpSchemasToProjectionEnums extends Generator {
 
   private def fields(schema: Schema): Seq[String] = {
-    schema.getFields()
+    schema.getFields.asScala
       .map(field => field.name)
       .toSeq
   }

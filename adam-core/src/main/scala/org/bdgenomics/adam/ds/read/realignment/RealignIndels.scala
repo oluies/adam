@@ -28,7 +28,7 @@ import org.bdgenomics.adam.rich.RichAlignment._
 import org.bdgenomics.adam.util.ReferenceFile
 import org.bdgenomics.formats.avro.Alignment
 import scala.annotation.tailrec
-import scala.collection.JavaConversions._
+import scala.jdk.CollectionConverters._
 import scala.collection.immutable.{ NumericRange, TreeSet }
 import scala.collection.mutable
 
@@ -517,7 +517,7 @@ private[read] class RealignIndels(
         new CigarElement(alignedBases, CigarOperator.M),
         new CigarElement(basesSoftClippedAtEnd, CigarOperator.S),
         new CigarElement(basesHardClippedAtEnd, CigarOperator.H))
-        .filter(_.getLength > 0))
+        .filter(_.getLength > 0).asJava)
     }
 
     // if read is fully before or fully after the consensus, then we
@@ -565,7 +565,7 @@ private[read] class RealignIndels(
           new CigarElement(basesAfter.toInt, CigarOperator.M),
           new CigarElement(basesSoftClippedAtEnd, CigarOperator.S),
           new CigarElement(basesHardClippedAtEnd, CigarOperator.H))
-          .filter(_.getLength > 0)))
+          .filter(_.getLength > 0).asJava))
     } else if (remappingIdx <= consensusStartIdx) {
       // read starts before variant and partially spans it
       // must be an insertion
@@ -581,7 +581,7 @@ private[read] class RealignIndels(
           new CigarElement(basesBefore.toInt, CigarOperator.M),
           new CigarElement(basesSoftClippedAtEnd + basesLeft.toInt, CigarOperator.S),
           new CigarElement(basesHardClippedAtEnd, CigarOperator.H))
-          .filter(_.getLength > 0)))
+          .filter(_.getLength > 0).asJava))
     } else {
       // read starts in variant and partially spans it
       // must be an insertion
@@ -599,7 +599,7 @@ private[read] class RealignIndels(
           new CigarElement(basesAfter.toInt, CigarOperator.M),
           new CigarElement(basesSoftClippedAtEnd, CigarOperator.S),
           new CigarElement(basesHardClippedAtEnd, CigarOperator.H))
-          .filter(_.getLength > 0)))
+          .filter(_.getLength > 0).asJava))
     }
   }
 

@@ -22,7 +22,7 @@ import java.io.IOException
 import org.apache.hadoop.mapreduce.lib.input.FileSplit
 import org.apache.hadoop.mapreduce.{ InputSplit, JobContext }
 import org.apache.parquet.hadoop.ParquetInputFormat
-import scala.collection.JavaConversions._
+import scala.jdk.CollectionConverters._
 import scala.collection.mutable.ListBuffer
 
 /**
@@ -48,7 +48,7 @@ private[ds] class ADAMParquetInputFormat[T] extends ParquetInputFormat[T] {
 
     val splits = new ListBuffer[InputSplit]()
     // iterate over all files (in no particular order)
-    for (file <- listStatus(job)) {
+    for (file <- listStatus(job).asScala) {
       val path = file.getPath
       val length = file.getLen
 
@@ -62,12 +62,12 @@ private[ds] class ADAMParquetInputFormat[T] extends ParquetInputFormat[T] {
         // blkLocations contains the locations of all copies of the block
         // we use blkLocations(0) because it is the "original" data, as in not
         // an HDFS replication
-        splits.add(new FileSplit(path, 0, length, blkLocations(0).getHosts))
+        splits += (new FileSplit(path, 0, length, blkLocations(0).getHosts))
       } else {
-        splits.add(new FileSplit(path, 0, length, Array.ofDim[String](0)))
+        splits += (new FileSplit(path, 0, length, Array.ofDim[String](0)))
       }
     }
     // sort by path first, then split offset
-    splits.sortBy(_.toString).toList
+    splits.sortBy(_.toString).toList.asJava
   }
 }

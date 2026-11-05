@@ -23,7 +23,7 @@ import org.bdgenomics.adam.models.ReferenceRegion
 import org.bdgenomics.adam.ds.read.realignment.IndelRealignmentTarget
 import org.bdgenomics.adam.ds.variant.VariantDataset
 import org.bdgenomics.adam.rich.RichAlignment
-import scala.collection.JavaConversions._
+import scala.jdk.CollectionConverters._
 
 /**
  * Singleton object for creating consensus generators.
@@ -143,7 +143,7 @@ abstract class ConsensusGenerator extends Serializable {
    * @return The number of alignment blocks that are alignment matches.
    */
   protected def numAlignmentBlocks(cigar: Cigar): Int = {
-    cigar.getCigarElements.map(element => {
+    cigar.getCigarElements.asScala.map(element => {
       element.getOperator match {
         case CigarOperator.M => 1
         case _               => 0

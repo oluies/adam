@@ -1,0 +1,17 @@
+name: Scala Steward
+
+on:
+  schedule:
+    - cron: '0 4 * * 1'
+  workflow_dispatch:
+
+jobs:
+  scala-steward:
+    runs-on: ubuntu-latest
+    if: ${{ github.repository == 'bigdatagenomics/adam' }}
+    steps:
+      # PRs opened with the default GITHUB_TOKEN do not trigger CI, so this needs a
+      # fine-grained PAT (contents + pull requests: write) stored as SCALA_STEWARD_TOKEN.
+      - uses: scala-steward-org/scala-steward-action@v2
+        with:
+          github-token: ${{ secrets.SCALA_STEWARD_TOKEN }}

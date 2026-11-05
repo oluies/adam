@@ -60,7 +60,7 @@ import org.bdgenomics.utils.interval.array.{
   IntervalArraySerializer
 }
 import org.seqdoop.hadoop_bam._
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 import scala.language.implicitConversions
 import scala.math.{ abs, min }
 import scala.reflect.ClassTag
@@ -856,7 +856,7 @@ sealed abstract class AlignmentDataset extends AvroReadGroupGenomicDataset[Align
       val binaryCodec = new BinaryCodec(compressedOut)
 
       // write a bam header - cribbed from Hadoop-BAM
-      binaryCodec.writeBytes("BAM\001".getBytes())
+      binaryCodec.writeBytes("BAM\u0001".getBytes())
       val sw: Writer = new StringWriter()
       new SAMTextHeaderCodec().encode(sw, header)
       binaryCodec.writeString(sw.toString, true, false)
@@ -1750,7 +1750,7 @@ sealed abstract class AlignmentDataset extends AvroReadGroupGenomicDataset[Align
    * @return Reads whose quality scores are binned.
    */
   def binQualityScores(bins: java.util.List[QualityScoreBin]): AlignmentDataset = {
-    binQualityScores(bins.asScala)
+    binQualityScores(bins.asScala.toSeq)
   }
 
   /**
@@ -1859,7 +1859,7 @@ sealed abstract class AlignmentDataset extends AvroReadGroupGenomicDataset[Align
    * @return AlignmentDataset filtered by one or more read groups.
    */
   def filterToReadGroups(readGroupIds: java.util.List[String]): AlignmentDataset = {
-    filterToReadGroups(readGroupIds.asScala)
+    filterToReadGroups(readGroupIds.asScala.toSeq)
   }
 
   /**
@@ -1899,7 +1899,7 @@ sealed abstract class AlignmentDataset extends AvroReadGroupGenomicDataset[Align
    * @return AlignmentDataset filtered by the specified samples.
    */
   def filterToSamples(readGroupSampleIds: java.util.List[String]): AlignmentDataset = {
-    filterToSamples(readGroupSampleIds.asScala)
+    filterToSamples(readGroupSampleIds.asScala.toSeq)
   }
 
   /**

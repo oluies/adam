@@ -31,7 +31,7 @@ import org.bdgenomics.adam.models.{
 }
 import org.bdgenomics.adam.util.AttributeUtils
 import org.bdgenomics.formats.avro.{ Alignment, Strand }
-import scala.collection.JavaConversions._
+import scala.jdk.CollectionConverters._
 import scala.math.max
 
 object RichAlignment {
@@ -95,7 +95,7 @@ case class RichAlignment(record: Alignment) {
    *   aligned as an alignment match.
    */
   lazy val unclippedEnd: Long = {
-    max(0L, samtoolsCigar.getCigarElements.reverse.takeWhile(isClipped).foldLeft(record.getEnd)({
+    max(0L, samtoolsCigar.getCigarElements.asScala.reverse.takeWhile(isClipped).foldLeft(record.getEnd)({
       (pos, cigarEl) => pos + cigarEl.getLength
     }))
   }
@@ -107,7 +107,7 @@ case class RichAlignment(record: Alignment) {
    *   aligned as an alignment match.
    */
   lazy val unclippedStart: Long = {
-    max(0L, samtoolsCigar.getCigarElements.takeWhile(isClipped).foldLeft(record.getStart)({
+    max(0L, samtoolsCigar.getCigarElements.asScala.takeWhile(isClipped).foldLeft(record.getStart)({
       (pos, cigarEl) => pos - cigarEl.getLength
     }))
   }

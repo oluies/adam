@@ -19,7 +19,7 @@ package org.bdgenomics.adam.ds.read
 
 import org.bdgenomics.adam.util.ADAMFunSuite
 import org.bdgenomics.formats.avro.{ Alignment, Fragment }
-import scala.collection.JavaConversions._
+import scala.jdk.CollectionConverters._
 
 class BinQualitiesSuite extends ADAMFunSuite {
 
@@ -178,7 +178,7 @@ class BinQualitiesSuite extends ADAMFunSuite {
 
     val fragment = Fragment.newBuilder
       .setName("testFragment")
-      .setAlignments(List(read))
+      .setAlignments(List(read).asJava)
       .build
 
     val newFragment = BinQualities.binFragment(fragment, bins)
@@ -186,6 +186,6 @@ class BinQualitiesSuite extends ADAMFunSuite {
     assert(newFragment.getAlignments.size === 1)
     assert(newFragment.getName === "testFragment")
 
-    testQuals(newFragment.getAlignments.head.getQualityScores)
+    testQuals(newFragment.getAlignments.asScala.head.getQualityScores)
   }
 }

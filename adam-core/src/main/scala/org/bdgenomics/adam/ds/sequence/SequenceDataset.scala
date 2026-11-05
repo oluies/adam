@@ -43,7 +43,7 @@ import org.bdgenomics.formats.avro.{
 }
 import org.bdgenomics.utils.interval.array.{ IntervalArray, IntervalArraySerializer }
 
-import scala.collection.JavaConverters.asScalaBuffer
+import scala.jdk.CollectionConverters._
 import scala.collection.mutable
 import scala.reflect.ClassTag
 import scala.reflect.runtime.universe._
@@ -283,7 +283,7 @@ sealed abstract class SequenceDataset extends AvroGenomicDataset[Sequence, Seque
    * return SequenceDataset filtered by one or more samples.
    */
   def filterToSamples(sampleIds: java.util.List[String]): SequenceDataset = {
-    filterToSamples(asScalaBuffer(sampleIds))
+    filterToSamples(sampleIds.asScala.toSeq)
   }
 
   /**
@@ -305,7 +305,7 @@ sealed abstract class SequenceDataset extends AvroGenomicDataset[Sequence, Seque
    */
   def slice(maximumLength: Long): SliceDataset = {
     def sliceSequence(sequence: Sequence): Seq[Slice] = {
-      val slices: mutable.MutableList[Slice] = mutable.MutableList()
+      val slices: mutable.ListBuffer[Slice] = mutable.ListBuffer()
 
       val sb = Slice.newBuilder
         .setName(sequence.getName)
@@ -333,7 +333,7 @@ sealed abstract class SequenceDataset extends AvroGenomicDataset[Sequence, Seque
           .build()
         index += 1
       }
-      slices
+      slices.toSeq
     }
     SliceDataset(rdd.flatMap(sliceSequence), references, samples)
   }

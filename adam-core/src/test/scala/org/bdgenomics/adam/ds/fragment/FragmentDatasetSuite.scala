@@ -51,7 +51,7 @@ import org.bdgenomics.adam.sql.{
 }
 import org.bdgenomics.adam.util.ADAMFunSuite
 import org.bdgenomics.formats.avro._
-import scala.collection.JavaConversions._
+import scala.jdk.CollectionConverters._
 
 object FragmentDatasetSuite extends Serializable {
 
@@ -324,7 +324,7 @@ class FragmentDatasetSuite extends ADAMFunSuite {
       QualityScoreBin(20, 40, 30),
       QualityScoreBin(40, 60, 50)))
     val qualityScoreCounts = binnedFragments.rdd.flatMap(fragment => {
-      fragment.getAlignments.toSeq
+      fragment.getAlignments.asScala.toSeq
     }).flatMap(read => {
       read.getQualityScores
     }).map(s => s.toInt - 33)

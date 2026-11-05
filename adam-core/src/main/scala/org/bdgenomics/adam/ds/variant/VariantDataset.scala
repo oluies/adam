@@ -50,7 +50,7 @@ import org.bdgenomics.utils.interval.array.{
   IntervalArray,
   IntervalArraySerializer
 }
-import scala.collection.JavaConversions._
+import scala.jdk.CollectionConverters._
 import scala.reflect.ClassTag
 import scala.reflect.runtime.universe._
 
@@ -308,7 +308,7 @@ sealed abstract class VariantDataset extends AvroGenomicDataset[Variant, Variant
    */
   def saveVcfHeaders(filePath: String): Unit = {
     // write vcf headers to file
-    VCFHeaderUtils.write(new VCFHeader(headerLines.toSet),
+    VCFHeaderUtils.write(new VCFHeader(headerLines.toSet.asJava),
       new Path("%s/_header".format(filePath)),
       rdd.context.hadoopConfiguration,
       false,

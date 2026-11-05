@@ -42,7 +42,7 @@ import org.bdgenomics.formats.avro.{
   Strand
 }
 import org.bdgenomics.utils.interval.array.{ IntervalArray, IntervalArraySerializer }
-import scala.collection.JavaConverters.asScalaBuffer
+import scala.jdk.CollectionConverters._
 import scala.reflect.ClassTag
 import scala.reflect.runtime.universe._
 
@@ -275,7 +275,7 @@ sealed abstract class ReadDataset extends AvroGenomicDataset[Read, ReadProduct, 
    * return ReadDataset filtered by one or more samples.
    */
   def filterToSamples(sampleIds: java.util.List[String]): ReadDataset = {
-    filterToSamples(asScalaBuffer(sampleIds))
+    filterToSamples(sampleIds.asScala.toSeq)
   }
 
   /**

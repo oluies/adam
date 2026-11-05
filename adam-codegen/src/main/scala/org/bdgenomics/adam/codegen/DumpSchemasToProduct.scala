@@ -19,7 +19,7 @@ package org.bdgenomics.adam.codegen
 
 import java.io.{ File, FileWriter }
 import org.apache.avro.Schema
-import scala.collection.JavaConversions._
+import scala.jdk.CollectionConverters._
 
 object DumpSchemasToProduct {
 
@@ -52,7 +52,7 @@ class DumpSchemasToProduct extends Generator {
   }
 
   private def getUnionType(schema: Schema): Schema = {
-    val unionTypes = schema.getTypes()
+    val unionTypes = schema.getTypes.asScala
       .filter(t => {
         t.getType != Schema.Type.NULL
       })
@@ -61,7 +61,7 @@ class DumpSchemasToProduct extends Generator {
   }
 
   private def fields(schema: Schema): Seq[(String, String)] = {
-    schema.getFields()
+    schema.getFields.asScala
       .map(field => {
         val name = field.name
         val fieldSchema = field.schema
@@ -80,7 +80,7 @@ class DumpSchemasToProduct extends Generator {
           }
         }
         (name, fieldType)
-      })
+      }).toSeq
   }
 
   private def conversion(schema: Schema, mapFn: String): String = schema.getType match {
@@ -96,7 +96,7 @@ class DumpSchemasToProduct extends Generator {
   }
 
   private def setters(schema: Schema): String = {
-    schema.getFields
+    schema.getFields.asScala
       .map(field => {
         val name = field.name
 
@@ -113,11 +113,11 @@ class DumpSchemasToProduct extends Generator {
           }
           case Schema.Type.ARRAY => {
             val convAction = conversion(field.schema.getElementType(), "map")
-            "    if (%s.nonEmpty) {\n      record.set%s(%s%s)\n    } else {\n      record.set%s(new java.util.LinkedList())\n    }".format(name, name.capitalize, name, convAction, name.capitalize)
+            "    if (%s.nonEmpty) {\n      record.set%s(%s%s.asJava)\n    } else {\n      record.set%s(new java.util.LinkedList())\n    }".format(name, name.capitalize, name, convAction, name.capitalize)
           }
           case Schema.Type.MAP => {
             val convAction = conversion(field.schema.getValueType(), "mapValues")
-            "    if (%s.nonEmpty) {\n      record.set%s(%s%s.asJava)\n    } else {\n      record.set%s(new java.util.HashMap())\n    }".format(name, name.capitalize, name, convAction, name.capitalize)
+            "    if (%s.nonEmpty) {\n      record.set%s(%s.view%s.toMap.asJava)\n    } else {\n      record.set%s(new java.util.HashMap())\n    }".format(name, name.capitalize, name, convAction, name.capitalize)
           }
           case _ => {
             throw new IllegalArgumentException("Bad type %s.".format(field.schema))
@@ -164,7 +164,7 @@ class DumpSchemasToProduct extends Generator {
   }
 
   private def getters(schema: Schema): String = {
-    schema.getFields
+    schema.getFields.asScala
       .map(field => {
         val name = field.name
 
@@ -181,11 +181,11 @@ class DumpSchemasToProduct extends Generator {
           }
           case Schema.Type.ARRAY => {
             val convAction = getConversion(field.schema.getElementType(), "map")
-            "      record.get%s().toSeq%s".format(name.capitalize, convAction)
+            "      record.get%s().asScala.toSeq%s".format(name.capitalize, convAction)
           }
           case Schema.Type.MAP => {
             val convAction = getConversion(field.schema.getValueType(), "mapValues")
-            "      record.get%s()%s.asScala".format(name.capitalize, convAction)
+            "      record.get%s().asScala.view%s.toMap".format(name.capitalize, convAction)
           }
           case _ => {
             throw new IllegalArgumentException("Bad type %s.".format(field.schema))

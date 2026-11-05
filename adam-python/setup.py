@@ -34,8 +34,8 @@ incorrect_invocation_message = """
 If you are installing bdgenomics.adam from ADAM's source, you must first build ADAM and
 run make develop.
 
-    To build ADAM with maven you can run:
-      ./build/mvn -DskipTests clean package
+    To build the ADAM assembly jar with Mill you can run:
+      ./mill adam-assembly.assembly
     Building the source dist is done in the Python directory:
       cd adam-python
       make sdist
@@ -45,7 +45,7 @@ run make develop.
 ADAM_HOME = os.path.abspath("../")
 TEMP_PATH = "deps"
 
-ALL_JARS_PATH = glob.glob(os.path.join(ADAM_HOME, "adam-assembly/target/adam-assembly*.jar"))
+ALL_JARS_PATH = glob.glob(os.path.join(ADAM_HOME, "out/adam-assembly/assembly.dest/out.jar"))
 JARS_PATH = list(filter(lambda x: (("sources" not in x) and ("javadoc" not in x)),
                    ALL_JARS_PATH))
 JARS_TARGET = os.path.join(TEMP_PATH, "jars")
@@ -56,7 +56,7 @@ SCRIPTS_TARGET = os.path.join(TEMP_PATH, "bin")
 if len(JARS_PATH) == 1:
     JARS_PATH = JARS_PATH[0]
 elif len(JARS_PATH) > 1:
-    print("Assembly jars exist for multiple Scala versions ({0}), please cleanup assembly/target".format(
+    print("Assembly jars exist for multiple Scala versions ({0}), please cleanup out/adam-assembly".format(
         JARS_PATH), file=sys.stderr)
     sys.exit(-1)
 elif len(JARS_PATH) == 0 and not os.path.exists(TEMP_PATH):

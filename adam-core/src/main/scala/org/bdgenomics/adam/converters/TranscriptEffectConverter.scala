@@ -27,7 +27,7 @@ import org.bdgenomics.formats.avro.{
   Variant,
   VariantAnnotationMessage
 }
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 
 /**
  * Convert between htsjdk VCF INFO reserved key "ANN" values and TranscriptEffects.

@@ -30,7 +30,7 @@ import org.bdgenomics.adam.ds.variant.{
   VariantDataset
 }
 import org.bdgenomics.adam.util.ReferenceFile
-import scala.collection.JavaConversions._
+import scala.jdk.CollectionConverters._
 
 object JavaADAMContext {
   // convert to and from java/scala implementations
@@ -128,7 +128,7 @@ class JavaADAMContext(val ac: ADAMContext) extends Serializable {
     viewRegions: java.util.List[ReferenceRegion],
     stringency: ValidationStringency): AlignmentDataset = {
 
-    ac.loadIndexedBam(pathName, viewRegions.toIterable, stringency = stringency)
+    ac.loadIndexedBam(pathName, viewRegions.asScala, stringency = stringency)
   }
 
   /**

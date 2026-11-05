@@ -100,7 +100,7 @@ import org.json4s.DefaultFormats
 import org.json4s.jackson.JsonMethods._
 import org.seqdoop.hadoop_bam._
 import org.seqdoop.hadoop_bam.util._
-import scala.collection.JavaConversions._
+import scala.jdk.CollectionConverters._
 import scala.collection.mutable.ArrayBuffer
 import scala.reflect.ClassTag
 
@@ -138,7 +138,7 @@ object ADAMContext {
   implicit def coverageToCoverageConversionFn(gDataset: CoverageDataset,
                                               rdd: RDD[Coverage]): CoverageDataset = {
     // hijack the transform function to discard the old RDD
-    gDataset.transform(oldRdd => rdd)
+    gDataset.transform((oldRdd: RDD[Coverage]) => rdd)
   }
 
   implicit def coverageToFeaturesConversionFn(
@@ -289,7 +289,7 @@ object ADAMContext {
   implicit def featuresToFeaturesConversionFn(gDataset: FeatureDataset,
                                               rdd: RDD[Feature]): FeatureDataset = {
     // hijack the transform function to discard the old RDD
-    gDataset.transform(oldRdd => rdd)
+    gDataset.transform((oldRdd: RDD[Feature]) => rdd)
   }
 
   implicit def featuresToFragmentsConversionFn(
@@ -450,7 +450,7 @@ object ADAMContext {
   implicit def fragmentsToFragmentsConversionFn(gDataset: FragmentDataset,
                                                 rdd: RDD[Fragment]): FragmentDataset = {
     // hijack the transform function to discard the old RDD
-    gDataset.transform(oldRdd => rdd)
+    gDataset.transform((oldRdd: RDD[Fragment]) => rdd)
   }
 
   implicit def fragmentsToAlignmentsConversionFn(
@@ -707,7 +707,7 @@ object ADAMContext {
   implicit def AlignmentsToAlignmentsConversionFn(gDataset: AlignmentDataset,
                                                   rdd: RDD[Alignment]): AlignmentDataset = {
     // hijack the transform function to discard the old RDD
-    gDataset.transform(oldRdd => rdd)
+    gDataset.transform((oldRdd: RDD[Alignment]) => rdd)
   }
 
   implicit def AlignmentsToGenotypesConversionFn(
@@ -872,7 +872,7 @@ object ADAMContext {
     gDataset: GenotypeDataset,
     rdd: RDD[Genotype]): GenotypeDataset = {
     // hijack the transform function to discard the old RDD
-    gDataset.transform(oldRdd => rdd)
+    gDataset.transform((oldRdd: RDD[Genotype]) => rdd)
   }
 
   implicit def genotypesToReadsConversionFn(
@@ -1018,7 +1018,7 @@ object ADAMContext {
   implicit def readsToReadsConversionFn(gDataset: ReadDataset,
                                         rdd: RDD[Read]): ReadDataset = {
     // hijack the transform function to discard the old RDD
-    gDataset.transform(oldRdd => rdd)
+    gDataset.transform((oldRdd: RDD[Read]) => rdd)
   }
 
   implicit def readsToSequencesConversionFn(
@@ -1169,7 +1169,7 @@ object ADAMContext {
   implicit def sequencesToSequencesConversionFn(gDataset: SequenceDataset,
                                                 rdd: RDD[Sequence]): SequenceDataset = {
     // hijack the transform function to discard the old RDD
-    gDataset.transform(oldRdd => rdd)
+    gDataset.transform((oldRdd: RDD[Sequence]) => rdd)
   }
 
   implicit def sequencesToSlicesConversionFn(
@@ -1320,7 +1320,7 @@ object ADAMContext {
   implicit def slicesToSlicesConversionFn(gDataset: SliceDataset,
                                           rdd: RDD[Slice]): SliceDataset = {
     // hijack the transform function to discard the old RDD
-    gDataset.transform(oldRdd => rdd)
+    gDataset.transform((oldRdd: RDD[Slice]) => rdd)
   }
 
   implicit def slicesToVariantsConversionFn(
@@ -1471,7 +1471,7 @@ object ADAMContext {
   implicit def variantsToVariantsConversionFn(gDataset: VariantDataset,
                                               rdd: RDD[Variant]): VariantDataset = {
     // hijack the transform function to discard the old RDD
-    gDataset.transform(oldRdd => rdd)
+    gDataset.transform((oldRdd: RDD[Variant]) => rdd)
   }
 
   implicit def variantsToVariantContextConversionFn(
@@ -1557,7 +1557,7 @@ object ADAMContext {
   implicit def variantContextsToVariantContextsConversionFn(gDataset: VariantContextDataset,
                                                             rdd: RDD[VariantContext]): VariantContextDataset = {
     // hijack the transform function to discard the old RDD
-    gDataset.transform(oldRdd => rdd)
+    gDataset.transform((oldRdd: RDD[VariantContext]) => rdd)
   }
 
   // Add ADAM Spark context methods
@@ -1667,7 +1667,7 @@ class ADAMContext(@transient val sc: SparkContext) extends Serializable with Log
    */
   private[ds] def loadBamPrograms(
     samHeader: SAMFileHeader): Seq[ProcessingStep] = {
-    val pgs = samHeader.getProgramRecords().toSeq
+    val pgs = samHeader.getProgramRecords().asScala.toSeq
     pgs.map(ADAMContext.convertSAMProgramRecord)
   }
 
@@ -1700,7 +1700,7 @@ class ADAMContext(@transient val sc: SparkContext) extends Serializable with Log
   private def loadSingleVcfMetadata(pathName: String): (SequenceDictionary, Seq[Sample], Seq[VCFHeaderLine]) = {
     def headerToMetadata(vcfHeader: VCFHeader): (SequenceDictionary, Seq[Sample], Seq[VCFHeaderLine]) = {
       val sd = SequenceDictionary.fromVCFHeader(vcfHeader)
-      val samples = asScalaBuffer(vcfHeader.getGenotypeSamples)
+      val samples = vcfHeader.getGenotypeSamples.asScala
         .map(s => {
           Sample.newBuilder()
             .setId(s)
@@ -2208,7 +2208,7 @@ class ADAMContext(@transient val sc: SparkContext) extends Serializable with Log
 
     val job = Job.getInstance(sc.hadoopConfiguration)
     val conf = ContextUtil.getConfiguration(job)
-    BAMInputFormat.setIntervals(conf, viewRegions.toList.map(r => LocatableReferenceRegion(r)))
+    BAMInputFormat.setIntervals(conf, viewRegions.toList.map(r => LocatableReferenceRegion(r)).asJava)
 
     val records = sc.newAPIHadoopFile(pathName,
       classOf[BAMInputFormat],
@@ -2647,7 +2647,7 @@ class ADAMContext(@transient val sc: SparkContext) extends Serializable with Log
 
     val conf = ContextUtil.getConfiguration(job)
     optViewRegions.foreach(vr => {
-      val intervals = vr.toList.map(r => LocatableReferenceRegion(r))
+      val intervals = vr.toList.map(r => LocatableReferenceRegion(r)).asJava
       VCFInputFormat.setIntervals(conf, intervals)
     })
 

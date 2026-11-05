@@ -23,7 +23,7 @@ import htsjdk.samtools.CigarOperator
 import org.bdgenomics.adam.models.ReferenceRegion
 import org.bdgenomics.adam.rich.RichAlignment
 import org.bdgenomics.formats.avro.Alignment
-import scala.collection.JavaConversions._
+import scala.jdk.CollectionConverters._
 import scala.collection.immutable.TreeSet
 
 private[realignment] object TargetOrdering extends Ordering[IndelRealignmentTarget] {
@@ -91,7 +91,7 @@ private[realignment] object IndelRealignmentTarget {
     var referencePos = read.record.getStart
     val cigar = read.samtoolsCigar
 
-    cigar.getCigarElements.foreach(cigarElement =>
+    cigar.getCigarElements.asScala.foreach(cigarElement =>
       cigarElement.getOperator match {
         // INSERT
         case CigarOperator.I =>

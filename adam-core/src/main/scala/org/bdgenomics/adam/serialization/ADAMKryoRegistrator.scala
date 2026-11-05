@@ -308,6 +308,13 @@ class ADAMKryoRegistrator extends KryoRegistrator with Logging {
     kryo.register(classOf[scala.Array[org.bdgenomics.adam.ds.read.recalibration.CovariateKey]])
     kryo.register(classOf[scala.Array[org.bdgenomics.adam.rich.RichAlignment]])
     kryo.register(classOf[scala.Array[scala.collection.Seq[_]]])
+    kryo.register(classOf[scala.Array[scala.collection.immutable.Seq[_]]])
+    // backing arrays of Scala 2.13 immutable.Vector
+    kryo.register(classOf[scala.Array[AnyRef]])
+    kryo.register(classOf[scala.Array[scala.Array[AnyRef]]])
+    kryo.register(classOf[scala.Array[scala.Array[scala.Array[AnyRef]]]])
+    kryo.register(classOf[scala.Array[scala.Array[scala.Array[scala.Array[AnyRef]]]]])
+    kryo.register(classOf[scala.Array[scala.Array[scala.Array[scala.Array[scala.Array[AnyRef]]]]]])
     kryo.register(classOf[scala.Array[Int]])
     kryo.register(classOf[scala.Array[Long]])
     kryo.register(classOf[scala.Array[String]])
@@ -380,6 +387,25 @@ private[serialization] object ADAMKryoRegistrator {
       "scala.collection.immutable.Stream$Cons",
       "scala.collection.immutable.Stream$Empty$",
       "scala.collection.immutable.Set$EmptySet$",
+      // Scala 2.13 collection implementation classes
+      "scala.collection.immutable.Nil$",
+      "scala.collection.immutable.Vector0$",
+      "scala.collection.immutable.Vector1",
+      "scala.collection.immutable.Vector2",
+      "scala.collection.immutable.Vector3",
+      "scala.collection.immutable.Vector4",
+      "scala.collection.immutable.Vector5",
+      "scala.collection.immutable.Vector6",
+      "scala.collection.immutable.ArraySeq$ofRef",
+      "scala.collection.immutable.ArraySeq$ofInt",
+      "scala.collection.immutable.ArraySeq$ofLong",
+      "scala.collection.immutable.Map$EmptyMap$",
+      "scala.collection.immutable.Map$Map1",
+      "scala.collection.immutable.Map$Map2",
+      "scala.collection.immutable.Map$Map3",
+      "scala.collection.immutable.Map$Map4",
+      "scala.collection.immutable.HashMap",
+      "scala.collection.immutable.BitmapIndexedMapNode",
       "scala.collection.mutable.ListBuffer$$anon$1",
       "scala.reflect.ClassTag$GenericClassTag",
       "scala.reflect.ClassTag$$anon$1",

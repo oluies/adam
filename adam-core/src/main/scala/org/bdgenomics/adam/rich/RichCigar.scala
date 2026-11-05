@@ -19,7 +19,7 @@ package org.bdgenomics.adam.rich
 
 import htsjdk.samtools.{ Cigar, CigarOperator, CigarElement }
 import scala.annotation.tailrec
-import scala.collection.JavaConversions._
+import scala.jdk.CollectionConverters._
 import scala.collection.mutable.Buffer
 
 /**
@@ -38,7 +38,7 @@ private[adam] case class RichCigar(cigar: Cigar) {
   def moveLeft(index: Int): RichCigar = {
     // var elements = List[CigarElement]()
     // deepclone instead of empty list initialization
-    val elements = cigar.getCigarElements.map(e => new CigarElement(e.getLength, e.getOperator))
+    val elements = cigar.getCigarElements.asScala.map(e => new CigarElement(e.getLength, e.getOperator))
 
     /**
      * Moves an element of a cigar left.
@@ -90,7 +90,7 @@ private[adam] case class RichCigar(cigar: Cigar) {
     }
 
     // create cigar from new list
-    RichCigar(new Cigar(moveCigarLeft(List[CigarElement](), index, elements.toList)))
+    RichCigar(new Cigar(moveCigarLeft(List[CigarElement](), index, elements.toList).asJava))
   }
 
   /**
@@ -99,7 +99,7 @@ private[adam] case class RichCigar(cigar: Cigar) {
    * @see isWellFormed
    */
   def getLength(): Int = {
-    cigar.getCigarElements.map(_.getLength).sum
+    cigar.getCigarElements.asScala.map(_.getLength).sum
   }
 
   /**
@@ -133,7 +133,7 @@ private[adam] case class RichCigar(cigar: Cigar) {
    */
   def softClippedBasesAtStart: Int = {
     if (cigar.isLeftClipped) {
-      getSoftClippedBases(cigar.getCigarElements)
+      getSoftClippedBases(cigar.getCigarElements.asScala)
     } else {
       0
     }
@@ -145,7 +145,7 @@ private[adam] case class RichCigar(cigar: Cigar) {
    */
   def softClippedBasesAtEnd: Int = {
     if (cigar.isRightClipped) {
-      getSoftClippedBases(cigar.getCigarElements.reverse)
+      getSoftClippedBases(cigar.getCigarElements.asScala.reverse)
     } else {
       0
     }

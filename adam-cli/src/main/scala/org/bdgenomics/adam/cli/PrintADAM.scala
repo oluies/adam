@@ -26,7 +26,7 @@ import org.bdgenomics.adam.util.ParquetFileTraversable
 import org.bdgenomics.utils.cli._
 import org.kohsuke.args4j.{ Argument, Option => Args4jOption }
 
-import scala.collection.JavaConversions._
+import scala.jdk.CollectionConverters._
 
 object PrintADAM extends BDGCommandCompanion {
   val commandName: String = "print"
@@ -98,7 +98,7 @@ class PrintADAM(protected val args: PrintADAMArgs) extends BDGSparkCommand[Print
   def run(sc: SparkContext) {
     val output = Option(args.outputFile)
     output.foreach(checkWriteablePath(_, sc.hadoopConfiguration))
-    args.filesToPrint.foreach(file => {
+    args.filesToPrint.asScala.foreach(file => {
       displayRaw(sc, file, pretty = args.prettyRaw, output = output)
     })
   }

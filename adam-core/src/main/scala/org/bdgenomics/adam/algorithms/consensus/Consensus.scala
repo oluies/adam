@@ -19,7 +19,7 @@ package org.bdgenomics.adam.algorithms.consensus
 
 import htsjdk.samtools.{ Cigar, CigarOperator }
 import org.bdgenomics.adam.models.{ ReferencePosition, ReferenceRegion }
-import scala.collection.JavaConversions._
+import scala.jdk.CollectionConverters._
 
 /**
  * Singleton object for generating consensus sequences from alignments.
@@ -53,11 +53,11 @@ private[adam] object Consensus extends Serializable {
     var referencePos = start.pos
 
     // do we have a single indel alignment block?
-    if (cigar.getCigarElements.count(elem => elem.getOperator == CigarOperator.I ||
+    if (cigar.getCigarElements.asScala.count(elem => elem.getOperator == CigarOperator.I ||
       elem.getOperator == CigarOperator.D) == 1) {
 
       // loop over elements and generate consensuses for indel blocks
-      cigar.getCigarElements.flatMap(cigarElement => {
+      cigar.getCigarElements.asScala.flatMap(cigarElement => {
         cigarElement.getOperator match {
           case CigarOperator.I => Some(new Consensus(sequence.substring(readPos,
             readPos + cigarElement.getLength),

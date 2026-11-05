@@ -310,7 +310,7 @@ abstract class CoverageDataset
         } else sortedIter
       })
 
-    transform(rdd => newRDD)
+    transform((rdd: RDD[Coverage]) => newRDD)
   }
 
   /**
@@ -388,7 +388,7 @@ abstract class CoverageDataset
     } else {
       // subtract region.start to shift mod to start of ReferenceRegion
       val newRDD = flattened.rdd.filter(r => r.start % bpPerBin == 0)
-      flattened.transform(rdd => newRDD)
+      flattened.transform((rdd: RDD[Coverage]) => newRDD)
     }
   }
 
@@ -441,7 +441,7 @@ abstract class CoverageDataset
           // compute average coverage in bin
           Coverage(r._1._2.referenceName, r._1._2.start, r._1._2.end, r._2._1 / r._2._2, r._1._1)
         })
-      flattened.transform(rdd => newRDD)
+      flattened.transform((rdd: RDD[Coverage]) => newRDD)
     }
   }
 

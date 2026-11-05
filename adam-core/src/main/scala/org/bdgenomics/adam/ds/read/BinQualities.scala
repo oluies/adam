@@ -20,7 +20,7 @@ package org.bdgenomics.adam.ds.read
 import org.apache.spark.rdd.RDD
 import org.bdgenomics.adam.ds.fragment.FragmentDataset
 import org.bdgenomics.formats.avro.{ Alignment, Fragment }
-import scala.collection.JavaConversions._
+import scala.jdk.CollectionConverters._
 
 /**
  * Companion object for creating quality score bins.
@@ -152,10 +152,10 @@ private[ds] object BinQualities extends Serializable {
    */
   private[read] def binFragment(fragment: Fragment,
                                 bins: Seq[QualityScoreBin]): Fragment = {
-    val reads: Seq[Alignment] = fragment.getAlignments
+    val reads: Seq[Alignment] = fragment.getAlignments.asScala.toSeq
     val binnedReads = reads.map(binRead(_, bins))
     Fragment.newBuilder(fragment)
-      .setAlignments(binnedReads)
+      .setAlignments(binnedReads.asJava)
       .build
   }
 

@@ -131,10 +131,10 @@ class FeatureDatasetSuite extends ADAMFunSuite {
     val gtfAttributes = gtfSplitTabs(8).split(";").map(_.trim)
     assert(gtfAttributes.size === 4)
     assert(gtfAttributes(0) === "gene_id \"ENSG00000223972\"")
-    assert(gtfAttributes(1) === "gene_biotype \"pseudogene\"")
-    // gene name/source move to the end
-    assert(gtfAttributes(2) === "gene_name \"DDX11L1\"")
-    assert(gtfAttributes(3) === "gene_source \"ensembl_havana\"")
+    // remaining attributes keep their input order
+    assert(gtfAttributes(1) === "gene_name \"DDX11L1\"")
+    assert(gtfAttributes(2) === "gene_source \"ensembl_havana\"")
+    assert(gtfAttributes(3) === "gene_biotype \"pseudogene\"")
 
     val outputPath = tempLocation(".gtf")
     features.saveAsGtf(outputPath, asSingleFile = true)

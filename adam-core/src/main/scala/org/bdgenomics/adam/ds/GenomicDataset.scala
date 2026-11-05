@@ -64,7 +64,7 @@ import org.bdgenomics.utils.interval.array.IntervalArray
 import org.json4s.JsonDSL._
 import org.json4s.jackson.JsonMethods._
 import scala.annotation.tailrec
-import scala.collection.JavaConversions._
+import scala.jdk.CollectionConverters._
 import scala.math.{ floor => mathFloor, min }
 import scala.reflect.ClassTag
 import scala.reflect.runtime.universe._
@@ -495,7 +495,7 @@ trait GenomicDataset[T, U <: Product, V <: GenomicDataset[T, U, V]] extends Logg
    * @param datasets Genomic datasets to union with this genomic dataset.
    */
   def union(datasets: java.util.List[V]): V = {
-    val datasetSeq: Seq[V] = datasets.toSeq
+    val datasetSeq: Seq[V] = datasets.asScala.toSeq
     union(datasetSeq: _*)
   }
 
@@ -856,7 +856,7 @@ trait GenomicDataset[T, U <: Product, V <: GenomicDataset[T, U, V]] extends Logg
 
         // replace file references in command and create process builder
         val finalCmd = GenomicDataset.processCommand(cmd, locs)
-        val pb = new ProcessBuilder(finalCmd)
+        val pb = new ProcessBuilder(finalCmd.asJava)
         pb.redirectError(ProcessBuilder.Redirect.INHERIT)
 
         // add environment variables to the process builder
@@ -944,8 +944,8 @@ trait GenomicDataset[T, U <: Product, V <: GenomicDataset[T, U, V]] extends Logg
     xFormatter: OutFormatter[X],
     convFn: Function2[V, RDD[X], Z]): Z = {
     val jInt: java.lang.Integer = flankSize.toInt
-    pipe[X, Y, Z, W](cmd.asInstanceOf[Seq[String]].toList,
-      files.asInstanceOf[Seq[String]].toList,
+    pipe[X, Y, Z, W](cmd.asInstanceOf[Seq[String]].toList.asJava,
+      files.asInstanceOf[Seq[String]].toList.asJava,
       environment.asInstanceOf[java.util.Map[String, String]],
       jInt,
       tFormatter,
@@ -1003,7 +1003,7 @@ trait GenomicDataset[T, U <: Product, V <: GenomicDataset[T, U, V]] extends Logg
         .asInstanceOf[InFormatterCompanion[T, U, V, W]]
     }
 
-    pipe[X, Y, Z, W](cmd, files.toSeq, environment.toMap, flankSize)(
+    pipe[X, Y, Z, W](cmd.asScala.toSeq, files.asScala.toSeq, environment.asScala.toMap, flankSize)(
       tFormatterCompanion,
       xFormatter,
       (gDataset: V, rdd: RDD[X]) => convFn.call(gDataset, rdd),
@@ -1074,7 +1074,7 @@ trait GenomicDataset[T, U <: Product, V <: GenomicDataset[T, U, V]] extends Logg
 
       val regions = getReferenceRegions(elem)
 
-      querys.exists(query => {
+      querys.asScala.exists(query => {
         regions.exists(_.overlaps(query))
       })
     }), optPartitionMap)

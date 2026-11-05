@@ -44,7 +44,7 @@ import org.bdgenomics.utils.interval.array.{
   IntervalArray,
   IntervalArraySerializer
 }
-import scala.collection.JavaConverters.{ asScalaBuffer, mapAsJavaMap, mapAsScalaMap }
+import scala.jdk.CollectionConverters._
 import scala.math._
 import scala.reflect.ClassTag
 import scala.reflect.runtime.universe._
@@ -270,7 +270,7 @@ sealed abstract class SliceDataset extends AvroGenomicDataset[Slice, SliceProduc
    * return SliceDataset filtered by one or more samples.
    */
   def filterToSamples(sampleIds: java.util.List[String]): SliceDataset = {
-    filterToSamples(asScalaBuffer(sampleIds))
+    filterToSamples(sampleIds.asScala.toSeq)
   }
 
   /**
@@ -307,7 +307,7 @@ sealed abstract class SliceDataset extends AvroGenomicDataset[Slice, SliceProduc
       val sb = Sequence.newBuilder(first)
         .setLength(first.getLength + second.getLength)
         .setSequence(first.getSequence + second.getSequence)
-        .setAttributes(mapAsJavaMap(mapAsScalaMap(first.getAttributes) ++ mapAsScalaMap(second.getAttributes)))
+        .setAttributes((first.getAttributes.asScala ++ second.getAttributes.asScala).asJava)
 
       Option(first.getSampleId).foreach(sampleId => sb.setSampleId(sampleId))
       sb.build

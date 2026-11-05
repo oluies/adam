@@ -17,6 +17,7 @@
  */
 package org.bdgenomics.adam.converters
 
+import scala.jdk.CollectionConverters._
 import com.google.common.collect.ImmutableList
 import htsjdk.samtools.ValidationStringency
 import htsjdk.variant.variantcontext.VariantContext
@@ -70,7 +71,7 @@ class TranscriptEffectConverterSuite extends ADAMFunSuite {
     val te = TranscriptEffectConverter.parseTranscriptEffect(VALID, ValidationStringency.STRICT).head
 
     assert(te.getAlternateAllele == "T")
-    assert(te.getEffects.contains("upstream_gene_variant"))
+    assert(te.getEffects.asScala.contains("upstream_gene_variant"))
     assert(te.getGeneName == "TAS1R3")
     assert(te.getGeneId == "ENSG00000169962")
     assert(te.getFeatureType == "transcript")
@@ -87,7 +88,7 @@ class TranscriptEffectConverterSuite extends ADAMFunSuite {
     assert(te.getProteinPosition == 1)
     assert(te.getProteinLength == 42)
     assert(te.getDistance == 453)
-    assert(te.getMessages.isEmpty)
+    assert(te.getMessages.asScala.isEmpty)
   }
 
   test("parse empty list VCF ANN attribute") {
@@ -124,7 +125,7 @@ class TranscriptEffectConverterSuite extends ADAMFunSuite {
 
     val te = ann.head
     assert(te.getAlternateAllele == "T")
-    assert(te.getEffects.contains("upstream_gene_variant"))
+    assert(te.getEffects.asScala.contains("upstream_gene_variant"))
     assert(te.getGeneName == "TAS1R3")
     assert(te.getGeneId == "ENSG00000169962")
     assert(te.getFeatureType == "transcript")
@@ -141,7 +142,7 @@ class TranscriptEffectConverterSuite extends ADAMFunSuite {
     assert(te.getProteinPosition == 1)
     assert(te.getProteinLength == 42)
     assert(te.getDistance == 453)
-    assert(te.getMessages.isEmpty)
+    assert(te.getMessages.asScala.isEmpty)
   }
 
   test("parse VCF ANN attribute with multiple transcript effects") {
@@ -150,7 +151,7 @@ class TranscriptEffectConverterSuite extends ADAMFunSuite {
 
     ann.foreach(te => {
       assert(te.getAlternateAllele == "T")
-      assert(te.getEffects.contains("upstream_gene_variant"))
+      assert(te.getEffects.asScala.contains("upstream_gene_variant"))
       assert(te.getGeneName == "TAS1R3")
       assert(te.getGeneId == "ENSG00000169962")
       assert(te.getFeatureType == "transcript")
@@ -167,7 +168,7 @@ class TranscriptEffectConverterSuite extends ADAMFunSuite {
       assert(te.getProteinPosition == 1)
       assert(te.getProteinLength == 42)
       assert(te.getDistance == 453)
-      assert(te.getMessages.isEmpty)
+      assert(te.getMessages.asScala.isEmpty)
     })
   }
 
@@ -286,7 +287,7 @@ class TranscriptEffectConverterSuite extends ADAMFunSuite {
     transcriptEffectsOpt.foreach(transcriptEffects => {
       val te = transcriptEffects(0)
       assert(te.getAlternateAllele == "T")
-      assert(te.getEffects.contains("upstream_gene_variant"))
+      assert(te.getEffects.asScala.contains("upstream_gene_variant"))
       assert(te.getGeneName == "TAS1R3")
       assert(te.getGeneId == "ENSG00000169962")
       assert(te.getFeatureType == "transcript")
@@ -303,7 +304,7 @@ class TranscriptEffectConverterSuite extends ADAMFunSuite {
       assert(te.getProteinPosition == 1)
       assert(te.getProteinLength == 42)
       assert(te.getDistance == 453)
-      assert(te.getMessages.isEmpty)
+      assert(te.getMessages.asScala.isEmpty)
     })
   }
 
@@ -321,7 +322,7 @@ class TranscriptEffectConverterSuite extends ADAMFunSuite {
       assert(transcriptEffects.size === 3)
       transcriptEffects.foreach(te => {
         assert(te.getAlternateAllele == "T")
-        assert(te.getEffects.contains("upstream_gene_variant"))
+        assert(te.getEffects.asScala.contains("upstream_gene_variant"))
         assert(te.getGeneName == "TAS1R3")
         assert(te.getGeneId == "ENSG00000169962")
         assert(te.getFeatureType == "transcript")
@@ -338,7 +339,7 @@ class TranscriptEffectConverterSuite extends ADAMFunSuite {
         assert(te.getProteinPosition == 1)
         assert(te.getProteinLength == 42)
         assert(te.getDistance == 453)
-        assert(te.getMessages.isEmpty)
+        assert(te.getMessages.asScala.isEmpty)
       })
     })
   }

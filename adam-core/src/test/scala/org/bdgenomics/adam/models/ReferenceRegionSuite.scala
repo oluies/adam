@@ -29,7 +29,7 @@ import org.bdgenomics.adam.converters.{
 }
 import org.bdgenomics.formats.avro._
 import org.scalatest.FunSuite
-import scala.collection.JavaConversions._
+import scala.jdk.CollectionConverters._
 
 class ReferenceRegionSuite extends FunSuite {
 
@@ -675,13 +675,13 @@ class ReferenceRegionSuite extends FunSuite {
       ValidationStringency.LENIENT,
       false)
     val vcb = new VariantContextBuilder()
-      .alleles(List(Allele.create("A", true), Allele.create("T")))
+      .alleles(List(Allele.create("A", true), Allele.create("T")).asJava)
       .start(1L)
       .stop(1L)
       .chr("1")
     val vc = vcb.genotypes(GenotypeBuilder.create("NA12878",
       vcb.getAlleles(),
-      Map.empty[String, java.lang.Object])).make()
+      Map.empty[String, java.lang.Object].asJava)).make()
     val gts = converter.convert(vc).flatMap(_.genotypes)
     assert(gts.size === 1)
     val gt = gts.head

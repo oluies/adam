@@ -49,7 +49,7 @@ import org.bdgenomics.formats.avro._
 import org.slf4j.Logger
 
 import scala.annotation.tailrec
-import scala.collection.JavaConversions._
+import scala.jdk.CollectionConverters._
 import scala.collection.mutable
 
 /**
@@ -164,7 +164,7 @@ object VariantContextConverter {
       convertAlleleOpt(v.getAlternateAllele),
       optNonRef(v, hasNonRefModel)).flatten
 
-    asSeq
+    asSeq.asJava
   }
 
   /**
@@ -180,11 +180,11 @@ object VariantContextConverter {
   private def convertAlleles(g: Genotype): java.util.List[Allele] = {
     var alleles = g.getAlleles
     if (alleles == null) return Collections.emptyList[Allele]
-    else g.getAlleles.map {
+    else g.getAlleles.asScala.map {
       case GenotypeAllele.NO_CALL | GenotypeAllele.OTHER_ALT => Allele.NO_CALL
       case GenotypeAllele.REF                                => Allele.create(g.getVariant.getReferenceAllele, true)
       case GenotypeAllele.ALT                                => Allele.create(g.getVariant.getAlternateAllele)
-    }
+    }.asJava
   }
 
   def cleanAndMixInSupportedLines(
@@ -269,10 +269,10 @@ object VariantContextConverter {
    * @return the header lines in the specified VCF file header
    */
   def headerLines(header: VCFHeader): Seq[VCFHeaderLine] = {
-    (header.getFilterLines ++
-      header.getFormatHeaderLines ++
-      header.getInfoHeaderLines ++
-      header.getOtherHeaderLines)
+    (header.getFilterLines.asScala ++
+      header.getFormatHeaderLines.asScala ++
+      header.getInfoHeaderLines.asScala ++
+      header.getOtherHeaderLines.asScala).toSeq
   }
 
   /**
@@ -292,12 +292,12 @@ object VariantContextConverter {
    * @return the samples in the specified VCF file header
    */
   def samples(header: VCFHeader): Seq[Sample] = {
-    asScalaBuffer(header.getGenotypeSamples)
+    header.getGenotypeSamples.asScala
       .map(s => {
         Sample.newBuilder()
           .setId(s)
           .build()
-      })
+      }).toSeq
   }
 
   def apply(headerLines: Seq[VCFHeaderLine],
@@ -366,11 +366,11 @@ class VariantContextConverter(
     vc: HtsjdkVariantContext): Seq[ADAMVariantContext] = {
 
     try {
-      vc.getAlternateAlleles.toList match {
+      vc.getAlternateAlleles.asScala.toList match {
         case List(NON_REF_ALLELE) | List() => {
           val (coreVariant, variant) = variantFormatFn(vc, None, 0, false)
           val v = genotypeVariant(coreVariant, variant)
-          val genotypes = vc.getGenotypes.map(g => {
+          val genotypes = vc.getGenotypes.asScala.map(g => {
             genotypeFormatFn(g, v, NON_REF_ALLELE, 0, Some(1), false)
           })
           return Seq(ADAMVariantContext(variant, genotypes))
@@ -382,7 +382,7 @@ class VariantContextConverter(
           )
           val (coreVariant, variant) = variantFormatFn(vc, Some(allele.getDisplayString), 0, false)
           val v = genotypeVariant(coreVariant, variant)
-          val genotypes = vc.getGenotypes.map(g => {
+          val genotypes = vc.getGenotypes.asScala.map(g => {
             genotypeFormatFn(g, v, allele, 1, None, false)
           })
           return Seq(ADAMVariantContext(variant, genotypes))
@@ -394,7 +394,7 @@ class VariantContextConverter(
           )
           val (coreVariant, variant) = variantFormatFn(vc, Some(allele.getDisplayString), 0, false)
           val v = genotypeVariant(coreVariant, variant)
-          val genotypes = vc.getGenotypes.map(g => {
+          val genotypes = vc.getGenotypes.asScala.map(g => {
             genotypeFormatFn(g, v, allele, 1, Some(2), false)
           })
           return Seq(ADAMVariantContext(variant, genotypes))
@@ -403,7 +403,7 @@ class VariantContextConverter(
           val vcb = new VariantContextBuilder(vc)
 
           // is the last allele the non-ref allele?
-          val alleles = vc.getAlternateAlleles.toSeq
+          val alleles = vc.getAlternateAlleles.asScala.toSeq
           val referenceModelIndex = if (alleles.nonEmpty && alleles.last == NON_REF_ALLELE) {
             Some(alleles.length)
           } else {
@@ -427,7 +427,7 @@ class VariantContextConverter(
               variantIdx,
               true)
             val v = genotypeVariant(coreVariant, variant)
-            val genotypes = vc.getGenotypes.map(g => {
+            val genotypes = vc.getGenotypes.asScala.map(g => {
               genotypeFormatFn(g, v, allele, idx, referenceModelIndex, true)
             })
             ADAMVariantContext(variant, genotypes)
@@ -471,8 +471,8 @@ class VariantContextConverter(
    *    from the array of variant names
    */
   private def joinNames(variant: Variant): Option[String] = {
-    if (variant.getNames != null && variant.getNames.nonEmpty) {
-      Some(variant.getNames.mkString(VCFConstants.ID_FIELD_SEPARATOR))
+    if (variant.getNames != null && !variant.getNames.isEmpty) {
+      Some(variant.getNames.asScala.mkString(VCFConstants.ID_FIELD_SEPARATOR))
     } else {
       None
     }
@@ -549,10 +549,10 @@ class VariantContextConverter(
           if (passed) {
             vcb.passFilters
           } else {
-            val failedFilters = v.getFiltersFailed
+            val failedFilters = v.getFiltersFailed.asScala
             require(failedFilters.nonEmpty,
               "Variant marked as filtered, but no failed filters listed in %s.".format(v))
-            vcb.filters(failedFilters.toSet)
+            vcb.filters(failedFilters.toSet.asJava)
           }
         }).getOrElse({
           throw new IllegalArgumentException("Filters were applied but filters passed is null in %s.".format(v))
@@ -727,7 +727,7 @@ class VariantContextConverter(
     index: Int): VariantAnnotation.Builder = {
 
     TranscriptEffectConverter.convertToTranscriptEffects(v, vc)
-      .fold(vab)(vab.setTranscriptEffects(_))
+      .fold(vab)(effects => vab.setTranscriptEffects(effects.asJava))
   }
 
   private val variantAnnotationFormatFns: Iterable[(HtsjdkVariantContext, VariantAnnotation.Builder, Variant, Int) => VariantAnnotation.Builder] = Iterable(
@@ -862,8 +862,8 @@ class VariantContextConverter(
     va: VariantAnnotation,
     vcb: VariantContextBuilder): VariantContextBuilder = {
 
-    if (!va.getTranscriptEffects.isEmpty) {
-      vcb.attribute("ANN", TranscriptEffectConverter.convertToVcfInfoAnnValue(va.getTranscriptEffects))
+    if (!va.getTranscriptEffects.asScala.isEmpty) {
+      vcb.attribute("ANN", TranscriptEffectConverter.convertToVcfInfoAnnValue(va.getTranscriptEffects.asScala))
     }
     vcb
   }
@@ -948,7 +948,7 @@ class VariantContextConverter(
         val likelihoods = gIndices.map(idx => {
           jDouble(PhredUtils.phredToLogProbability(pl(idx)))
         }).toList
-        gb.setGenotypeLikelihoods(likelihoods)
+        gb.setGenotypeLikelihoods(likelihoods.asJava)
       } catch {
         case _: ArrayIndexOutOfBoundsException => {
           logger.warn("Ran into Array Out of Bounds when accessing indices %s of genotype %s.".format(gIndices.mkString(","), g))
@@ -967,7 +967,7 @@ class VariantContextConverter(
       val pl = g.getPL
       gb.setNonReferenceLikelihoods(gIndices.map(idx => {
         jDouble(PhredUtils.phredToLogProbability(pl(idx)))
-      }).toList)
+      }).toList.asJava)
     } else {
       gb
     }
@@ -1001,7 +1001,7 @@ class VariantContextConverter(
         tryAndCatchStringCast(
           attr,
           attribute => {
-            gb.setStrandBiasComponents(attribute.asInstanceOf[Array[java.lang.Integer]].toSeq)
+            gb.setStrandBiasComponents(attribute.asInstanceOf[Array[java.lang.Integer]].toSeq.asJava)
           }, attribute => {
             val components = attribute.split(",")
             require(components.size == 4,
@@ -1009,7 +1009,7 @@ class VariantContextConverter(
                 attr, g))
 
             gb.setStrandBiasComponents(components.map(e => e.toInt: java.lang.Integer)
-              .toSeq)
+              .toSeq.asJava)
           })
       }).getOrElse(gb)
   }
@@ -1098,10 +1098,10 @@ class VariantContextConverter(
 
   private[converters] def nonRefPls(gls: java.util.List[java.lang.Double],
                                     nls: java.util.List[java.lang.Double]): Array[Int] = {
-    require(gls.length == nls.length,
+    require(gls.size == nls.size,
       "Genotype likelihoods (%s) and non-reference likelihoods (%s) disagree on copy number".format(
-        gls.mkString(","), nls.mkString(",")))
-    val copyNumber = gls.length - 1
+        gls.asScala.mkString(","), nls.asScala.mkString(",")))
+    val copyNumber = gls.size - 1
     val elements = numPls(copyNumber)
 
     val array = Array.fill(elements) { PhredUtils.minValue }
@@ -1128,16 +1128,16 @@ class VariantContextConverter(
       if (g.getVariant == null ||
         g.getVariant.getAlternateAllele != null ||
         nls.isEmpty) {
-        if (nls.nonEmpty) {
+        if (!nls.isEmpty) {
           logger.warn("Expected empty non-reference likelihoods for genotype with empty likelihoods (%s).".format(g))
         }
         gb.noPL
       } else {
-        gb.PL(nls.map(l => PhredUtils.logProbabilityToPhred(l))
+        gb.PL(nls.asScala.map(l => PhredUtils.logProbabilityToPhred(l))
           .toArray)
       }
     } else if (nls.isEmpty) {
-      gb.PL(gls.map(l => PhredUtils.logProbabilityToPhred(l))
+      gb.PL(gls.asScala.map(l => PhredUtils.logProbabilityToPhred(l))
         .toArray)
     } else {
       gb.PL(nonRefPls(gls, nls))
@@ -1154,7 +1154,7 @@ class VariantContextConverter(
     } else {
       require(components.size == 4,
         "Illegal strand bias components length. Must be empty or 4. In:\n%s".format(g))
-      gb.attribute("SB", components.map(i => i: Int).toArray)
+      gb.attribute("SB", components.asScala.map(i => i: Int).toArray)
     }
   }
 
@@ -1198,7 +1198,7 @@ class VariantContextConverter(
       val filtersWereApplied = vcab.setFiltersApplied(true)
       if (g.isFiltered) {
         filtersWereApplied.setFiltersPassed(false)
-          .setFiltersFailed(g.getFilters.split(";").toList)
+          .setFiltersFailed(g.getFilters.split(";").toList.asJava)
       } else {
         filtersWereApplied.setFiltersPassed(true)
       }
@@ -1267,7 +1267,7 @@ class VariantContextConverter(
           if (passed) {
             gb.filters("PASS")
           } else {
-            val failedFilters = vca.getFiltersFailed
+            val failedFilters = vca.getFiltersFailed.asScala
             require(failedFilters.nonEmpty,
               "Genotype marked as filtered, but no failed filters listed in %s.".format(vca))
             gb.filters(failedFilters.mkString(";"))
@@ -1517,8 +1517,7 @@ class VariantContextConverter(
       def objToArray(obj: java.lang.Object): Array[String] = {
         try {
           val l: java.util.List[String] = obj.asInstanceOf[java.util.List[String]]
-          // java.util.List has a conflicing toString. Get implicit to buffer first
-          val sL: mutable.Buffer[String] = l
+          val sL: mutable.Buffer[String] = l.asScala
           sL.toArray
         } catch {
           case cce: ClassCastException => {
@@ -1778,7 +1777,7 @@ class VariantContextConverter(
       val convertedAnnotationWithAttrs = if (attrMap.isEmpty) {
         convertedAnnotation
       } else {
-        convertedAnnotation.setAttributes(attrMap)
+        convertedAnnotation.setAttributes(attrMap.asJava)
       }
 
       variantBuilder.setAnnotation(convertedAnnotationWithAttrs.build)
@@ -1825,7 +1824,7 @@ class VariantContextConverter(
         .setStart(variant.getStart)
         .setEnd(variant.getEnd)
         .setSampleId(g.getSampleName)
-        .setAlleles(g.getAlleles.map(gtAllele => {
+        .setAlleles(g.getAlleles.asScala.map(gtAllele => {
           if (gtAllele.isReference) {
             GenotypeAllele.REF
           } else if (gtAllele.isNoCall) {
@@ -1835,7 +1834,7 @@ class VariantContextConverter(
           } else {
             GenotypeAllele.OTHER_ALT
           }
-        }))
+        }).asJava)
 
       // was this split?
       if (wasSplit) {
@@ -1915,7 +1914,7 @@ class VariantContextConverter(
       val convertedAnnotationsWithAttrs = if (attrMap.isEmpty) {
         convertedAnnotations
       } else {
-        convertedAnnotations.setAttributes(attrMap)
+        convertedAnnotations.setAttributes(attrMap.asJava)
       }
 
       // build the annotations and attach
@@ -2210,7 +2209,7 @@ class VariantContextConverter(
     def convert(vc: ADAMVariantContext): HtsjdkVariantContext = {
       val v = vc.variant.variant
       val hasNonRefAlleles = vc.genotypes
-        .exists(_.getNonReferenceLikelihoods.nonEmpty)
+        .exists(!_.getNonReferenceLikelihoods.isEmpty)
       val builder = new VariantContextBuilder()
         .chr(v.getReferenceName)
         .start(v.getStart + 1)
@@ -2243,7 +2242,7 @@ class VariantContextConverter(
             .foldLeft(convertedWithVariants)((vcb: VariantContextBuilder, fn) => fn(va, vcb))
 
           // get the attribute map
-          val attributes: Map[String, String] = va.getAttributes.toMap
+          val attributes: Map[String, String] = va.getAttributes.asScala.toMap
 
           // apply the attribute converters and return
           attributeFns.foldLeft(convertedWithAnnotations)((vcb: VariantContextBuilder, fn) => {
@@ -2361,7 +2360,7 @@ class VariantContextConverter(
             })
 
           // get the attribute map
-          val attributes: Map[String, String] = vca.getAttributes.toMap
+          val attributes: Map[String, String] = vca.getAttributes.asScala.toMap
 
           // apply the attribute converters and return
           attributeFns.foldLeft(convertedAnnotations)((gb: GenotypeBuilder, fn) => {
@@ -2407,7 +2406,7 @@ class VariantContextConverter(
     try {
       val vcb = new VariantContextBuilder(variantExtractFn(vc))
 
-      Some(vcb.genotypes(vc.genotypes.map(g => genotypeExtractFn(g)))
+      Some(vcb.genotypes(vc.genotypes.map(g => genotypeExtractFn(g)).toSeq.asJava)
         .make)
     } catch {
       case t: Throwable => {
