@@ -1257,7 +1257,7 @@ class FeatureDatasetSuite extends ADAMFunSuite {
     val f3 = fb.setReferenceName("1").setStart(3L).setEnd(103L).setGeneId("CCDS22.1").build()
     val features = FeatureDataset(sc.parallelize(Seq(f1, f2, f3)))
     val featuresDs = features.transformDataset(ds => ds)
-    assert(features.filterToGene("CCDS22.1").rdd.count() === 2)
+    assert(featuresDs.filterToGene("CCDS22.1").rdd.count() === 2)
   }
 
   sparkTest("filter RDD bound features by genes") {
@@ -1276,7 +1276,7 @@ class FeatureDatasetSuite extends ADAMFunSuite {
     val f3 = fb.setReferenceName("1").setStart(3L).setEnd(103L).setGeneId("CCDS22.2").build()
     val features = FeatureDataset(sc.parallelize(Seq(f1, f2, f3)))
     val featuresDs = features.transformDataset(ds => ds)
-    assert(features.filterToGenes(Seq("CCDS22.1", "CCDS22.2")).rdd.count() === 2)
+    assert(featuresDs.filterToGenes(Seq("CCDS22.1", "CCDS22.2")).rdd.count() === 2)
   }
 
   sparkTest("filter RDD bound features by transcript") {
@@ -1295,7 +1295,7 @@ class FeatureDatasetSuite extends ADAMFunSuite {
     val f3 = fb.setReferenceName("1").setStart(3L).setEnd(103L).setTranscriptId("ENST00000445648").build()
     val features = FeatureDataset(sc.parallelize(Seq(f1, f2, f3)))
     val featuresDs = features.transformDataset(ds => ds)
-    assert(features.filterToTranscript("ENST00000445648").rdd.count() === 2)
+    assert(featuresDs.filterToTranscript("ENST00000445648").rdd.count() === 2)
   }
 
   sparkTest("filter RDD bound features by transcripts") {
@@ -1314,7 +1314,7 @@ class FeatureDatasetSuite extends ADAMFunSuite {
     val f3 = fb.setReferenceName("1").setStart(3L).setEnd(103L).setTranscriptId("ENST00000445649").build()
     val features = FeatureDataset(sc.parallelize(Seq(f1, f2, f3)))
     val featuresDs = features.transformDataset(ds => ds)
-    assert(features.filterToTranscripts(Seq("ENST00000445648", "ENST00000445649")).rdd.count() === 2)
+    assert(featuresDs.filterToTranscripts(Seq("ENST00000445648", "ENST00000445649")).rdd.count() === 2)
   }
 
   sparkTest("filter RDD bound features by exon") {
@@ -1333,7 +1333,7 @@ class FeatureDatasetSuite extends ADAMFunSuite {
     val f3 = fb.setReferenceName("1").setStart(3L).setEnd(103L).setExonId("ENSE00001779983").build()
     val features = FeatureDataset(sc.parallelize(Seq(f1, f2, f3)))
     val featuresDs = features.transformDataset(ds => ds)
-    assert(features.filterToExon("ENSE00001779983").rdd.count() === 2)
+    assert(featuresDs.filterToExon("ENSE00001779983").rdd.count() === 2)
   }
 
   sparkTest("filter RDD bound features by exons") {
@@ -1352,7 +1352,7 @@ class FeatureDatasetSuite extends ADAMFunSuite {
     val f3 = fb.setReferenceName("1").setStart(3L).setEnd(103L).setExonId("ENSE00001779984").build()
     val features = FeatureDataset(sc.parallelize(Seq(f1, f2, f3)))
     val featuresDs = features.transformDataset(ds => ds)
-    assert(features.filterToExons(Seq("ENSE00001779983", "ENSE00001779984")).rdd.count() === 2)
+    assert(featuresDs.filterToExons(Seq("ENSE00001779983", "ENSE00001779984")).rdd.count() === 2)
   }
 
   sparkTest("filter RDD bound features by protein") {
@@ -1371,7 +1371,7 @@ class FeatureDatasetSuite extends ADAMFunSuite {
     val f3 = fb.setReferenceName("1").setStart(3L).setEnd(103L).setProteinId("O14640-2").build()
     val features = FeatureDataset(sc.parallelize(Seq(f1, f2, f3)))
     val featuresDs = features.transformDataset(ds => ds)
-    assert(features.filterToProtein("O14640-2").rdd.count() === 2)
+    assert(featuresDs.filterToProtein("O14640-2").rdd.count() === 2)
   }
 
   sparkTest("filter RDD bound features by proteins") {
@@ -1390,7 +1390,7 @@ class FeatureDatasetSuite extends ADAMFunSuite {
     val f3 = fb.setReferenceName("1").setStart(3L).setEnd(103L).setProteinId("O14640-3").build()
     val features = FeatureDataset(sc.parallelize(Seq(f1, f2, f3)))
     val featuresDs = features.transformDataset(ds => ds)
-    assert(features.filterToProteins(Seq("O14640-2", "O14640-3")).rdd.count() === 2)
+    assert(featuresDs.filterToProteins(Seq("O14640-2", "O14640-3")).rdd.count() === 2)
   }
 
   sparkTest("filter RDD bound features by score") {
@@ -1401,7 +1401,7 @@ class FeatureDatasetSuite extends ADAMFunSuite {
   sparkTest("filter dataset bound features by score") {
     val features = sc.loadFeatures(testFile("dvl1.200.bed"))
     val featuresDs = features.transformDataset(ds => ds)
-    assert(features.filterByScore(10.0d).rdd.count() === 23)
+    assert(featuresDs.filterByScore(10.0d).rdd.count() === 23)
   }
 
   sparkTest("filter RDD bound features by parent") {
@@ -1412,7 +1412,7 @@ class FeatureDatasetSuite extends ADAMFunSuite {
   sparkTest("filter dataset bound features by parent") {
     val features = sc.loadFeatures(testFile("dvl1.200.gff3"))
     val featuresDs = features.transformDataset(ds => ds)
-    assert(features.filterToParent("ENSG00000107404").rdd.count() === 8)
+    assert(featuresDs.filterToParent("ENSG00000107404").rdd.count() === 8)
   }
 
   sparkTest("filter RDD bound features by parents") {
@@ -1423,7 +1423,7 @@ class FeatureDatasetSuite extends ADAMFunSuite {
   sparkTest("filter dataset bound features by parents") {
     val features = sc.loadFeatures(testFile("dvl1.200.gff3"))
     val featuresDs = features.transformDataset(ds => ds)
-    assert(features.filterToParents(Seq("ENSG00000107404", "ENSG00000162576")).rdd.count() === 18)
+    assert(featuresDs.filterToParents(Seq("ENSG00000107404", "ENSG00000162576")).rdd.count() === 18)
   }
 
   sparkTest("filter RDD bound features by attribute") {
@@ -1434,7 +1434,7 @@ class FeatureDatasetSuite extends ADAMFunSuite {
   sparkTest("filter dataset bound features by attribute") {
     val features = sc.loadFeatures(testFile("dvl1.200.gff3"))
     val featuresDs = features.transformDataset(ds => ds)
-    assert(features.filterByAttribute("biotype", "protein_coding").rdd.count() === 68)
+    assert(featuresDs.filterByAttribute("biotype", "protein_coding").rdd.count() === 68)
   }
 
   sparkTest("transform dataset via java API") {

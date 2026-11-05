@@ -282,7 +282,7 @@ sealed abstract class VariantContextDataset extends MultisampleGenomicDataset[Va
     dataset.toDF()
       .write
       .format("parquet")
-      .option("spark.sql.parquet.compression.codec", compressionCodec.toString.toLowerCase())
+      .option("compression", compressionCodec.toString.toLowerCase())
       .save(pathName)
     saveMetadata(pathName)
   }

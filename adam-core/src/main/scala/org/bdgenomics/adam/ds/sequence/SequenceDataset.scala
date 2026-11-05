@@ -183,7 +183,7 @@ case class DatasetBoundSequenceDataset private[ds] (
     dataset.toDF()
       .write
       .format("parquet")
-      .option("spark.sql.parquet.compression.codec", compressionCodec.toString.toLowerCase())
+      .option("compression", compressionCodec.toString.toLowerCase())
       .save(filePath)
     saveMetadata(filePath)
   }

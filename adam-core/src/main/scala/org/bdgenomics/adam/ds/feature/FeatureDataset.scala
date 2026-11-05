@@ -25,6 +25,7 @@ import org.apache.spark.SparkContext
 import org.apache.spark.api.java.function.{ Function => JFunction }
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.Dataset
+import org.apache.spark.sql.functions.{ array_contains, arrays_overlap, typedLit }
 import org.bdgenomics.adam.models._
 import org.bdgenomics.adam.ds.ADAMContext._
 import org.bdgenomics.adam.ds._
@@ -325,7 +326,7 @@ case class DatasetBoundFeatureDataset private[ds] (
     dataset.toDF()
       .write
       .format("parquet")
-      .option("spark.sql.parquet.compression.codec", compressionCodec.toString.toLowerCase())
+      .option("compression", compressionCodec.toString.toLowerCase())
       .save(filePath)
     saveMetadata(filePath)
   }
@@ -402,11 +403,11 @@ case class DatasetBoundFeatureDataset private[ds] (
   }
 
   override def filterToParent(parentId: String): FeatureDataset = {
-    transformDataset(dataset => dataset.filter(dataset.col("parentIds").contains(parentId)))
+    transformDataset(dataset => dataset.filter(array_contains(dataset.col("parentIds"), parentId)))
   }
 
   override def filterToParents(parentIds: Seq[String]): FeatureDataset = {
-    transformDataset(dataset => dataset.filter(dataset.col("parentIds") isin (parentIds: _*)))
+    transformDataset(dataset => dataset.filter(arrays_overlap(dataset.col("parentIds"), typedLit(parentIds))))
   }
 
   override def filterToReferenceName(referenceName: String): FeatureDataset = {

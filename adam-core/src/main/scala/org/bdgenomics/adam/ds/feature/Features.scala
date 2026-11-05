@@ -78,7 +78,7 @@ private[feature] object Features {
   def toDbxref(s: String): Option[Dbxref] = {
     val i = s.indexOf(':')
     if (i >= 0) {
-      Some(new Dbxref(s.substring(0, i), s.substring(i)))
+      Some(new Dbxref(s.substring(0, i), s.substring(i + 1)))
     } else {
       None
     }
@@ -104,7 +104,7 @@ private[feature] object Features {
   def toOntologyTerm(s: String): Option[OntologyTerm] = {
     val i = s.indexOf(':')
     if (i >= 0) {
-      Some(new OntologyTerm(s.substring(0, i), s.substring(i)))
+      Some(new OntologyTerm(s.substring(0, i), s.substring(i + 1)))
     } else {
       None
     }
