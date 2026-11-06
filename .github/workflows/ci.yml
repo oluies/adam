@@ -13,5 +13,9 @@ jobs:
       - uses: coursier/cache-action@v9
       # Mill fetches the JVM pinned by mill-jvm-version in build.mill
       - run: ./mill --ticker false __.compile
+      # tests run against scoverage-instrumented classes
       - run: ./mill --ticker false __.test
+      - run: ./mill --ticker false scoverage.xmlReportAll
+      # CRAP scores for Scala methods (report only, no gate yet)
+      - run: ./mill --ticker false scripts/crap.scala --top 40
       - run: ./mill --ticker false adam-assembly.assembly

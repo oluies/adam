@@ -100,6 +100,12 @@ $ ./mill __.test                  # run all tests
 $ ./mill adam-assembly.assembly   # build the ADAM CLI überjar used by bin/adam-submit
 ```
 
+Tests run against [scoverage](https://github.com/scoverage)-instrumented classes. After
+`./mill __.test`, `./mill scoverage.htmlReportAll` writes a statement coverage report to
+`out/scoverage/htmlReportAll.dest`, and `./mill scripts/crap.scala` prints a
+[CRAP](https://testing.googleblog.com/2011/02/this-code-is-crap.html) score
+(complexity × untested-ness) for every Scala method, worst first.
+
 ### Installing Spark
 
 You'll need to have a Spark release on your system and the `$SPARK_HOME` environment variable pointing at it;
