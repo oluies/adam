@@ -21,13 +21,20 @@ import com.google.common.io.Resources
 import java.io.File
 import java.net.{ URI, URL }
 import java.nio.file.{ Files, Path }
-import org.scalatest.{ Tag, BeforeAndAfter, FunSuite }
+import org.apache.hadoop.conf.Configuration
+import org.scalatest.{ Tag, BeforeAndAfter, BeforeAndAfterAll, FunSuite }
 import org.apache.spark.{ SparkConf, SparkContext }
 import org.apache.spark.sql.{ SparkSession, SQLContext }
-import org.apache.log4j.Level
 import scala.io.Source
+import scala.jdk.CollectionConverters._
 
-trait SparkFunSuite extends FunSuite with BeforeAndAfter {
+/**
+ * Runs the tests of a suite against one shared local SparkSession, created on
+ * first use and stopped after the last test. Between tests, cached RDDs and
+ * tables are dropped and the Hadoop configuration is restored, so a test sees
+ * the same context state whatever ran before it.
+ */
+trait SparkFunSuite extends FunSuite with BeforeAndAfter with BeforeAndAfterAll {
 
   var sc: SparkContext = _
   var spark: SparkSession = _
@@ -52,7 +59,8 @@ trait SparkFunSuite extends FunSuite with BeforeAndAfter {
         .setMaster(master)
         .set("spark.driver.port", nextTestPort.toString)
         .set("spark.ui.enabled", "false")
-        .set("spark.driver.allowMultipleContexts", "true")
+        .set("spark.ui.showConsoleProgress", "false")
+        .set("spark.sql.shuffle.partitions", "4")
 
       properties.foreach(kv => conf.set(kv._1, kv._2))
       try {
@@ -77,41 +85,62 @@ trait SparkFunSuite extends FunSuite with BeforeAndAfter {
     spark = null
     sqlContext = null
     sc = null
+    hadoopConfSnapshot = null
+  }
+
+  private var hadoopConfSnapshot: Configuration = _
+
+  /** Starts the suite's shared SparkSession unless it is already running. */
+  private def ensureSparkContext(): Unit = {
+    if (spark == null || sc.isStopped) {
+      setupSparkContext(getClass.getSimpleName)
+      hadoopConfSnapshot = new Configuration(sc.hadoopConfiguration)
+    }
+  }
+
+  /** Drops what a test left in the shared context: cached data and Hadoop configuration changes. */
+  private def resetSparkContext(): Unit = {
+    if (spark != null && !sc.isStopped) {
+      sc.getPersistentRDDs.values.foreach(_.unpersist(blocking = true))
+      spark.catalog.clearCache()
+      val conf = sc.hadoopConfiguration
+      conf.clear()
+      hadoopConfSnapshot.iterator().asScala.foreach(e => conf.set(e.getKey, e.getValue))
+    }
+  }
+
+  private def withSparkContext(body: => Unit): Unit = {
+    ensureSparkContext()
+    try {
+      body
+    } finally {
+      resetSparkContext()
+    }
+  }
+
+  override def afterAll(): Unit = {
+    try {
+      if (spark != null) teardownSparkContext()
+    } finally {
+      super.afterAll()
+    }
   }
 
   def sparkBefore(beforeName: String)(body: => Unit) {
     before {
-      setupSparkContext(beforeName)
-      try {
-        // Run the before block
-        body
-      } finally {
-        teardownSparkContext()
-      }
+      withSparkContext(body)
     }
   }
 
   def sparkAfter(beforeName: String)(body: => Unit) {
     after {
-      setupSparkContext(beforeName)
-      try {
-        // Run the after block
-        body
-      } finally {
-        teardownSparkContext()
-      }
+      withSparkContext(body)
     }
   }
 
   def sparkTest(name: String, tags: Tag*)(body: => Unit) {
     test(name, SparkTest +: tags: _*) {
-      setupSparkContext(name)
-      try {
-        // Run the test
-        body
-      } finally {
-        teardownSparkContext()
-      }
+      withSparkContext(body)
     }
   }
 

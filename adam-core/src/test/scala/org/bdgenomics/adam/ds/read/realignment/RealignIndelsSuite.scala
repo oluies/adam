@@ -181,6 +181,21 @@ class RealignIndelsSuite extends ADAMFunSuite {
     assert(readReference != null)
   }
 
+  sparkTest("realignment evaluates its input once") {
+    val reads = artificialReads.collect()
+    val evaluations = sc.longAccumulator("input evaluations")
+    val input = sc.parallelize(reads.toSeq, 2).map(r => {
+      evaluations.add(1)
+      r
+    })
+
+    val realigned = RealignIndels(input, dataIsSorted = true).collect()
+
+    assert(realigned.length === reads.count(_.getReadMapped))
+    // the reads are cached once; finding targets and grouping by target reuse the cache
+    assert(evaluations.value === reads.length)
+  }
+
   sparkTest("checking realigned reads for artificial input") {
     val artificialRealignedReadsCollected = artificialRealignedReads()
       .collect()
@@ -321,7 +336,7 @@ class RealignIndelsSuite extends ADAMFunSuite {
     val ri = new RealignIndels(sc)
     val read = "AAAAAAAA"
     val ref = "AAGGGGAA"
-    val qScores = Seq(40, 40, 40, 40, 40, 40, 40, 40)
+    val qScores = Array(40, 40, 40, 40, 40, 40, 40, 40)
 
     assert(ri.sumMismatchQualityIgnoreCigar(read, ref, qScores, Int.MaxValue, 0) === 160)
   }
@@ -329,7 +344,7 @@ class RealignIndelsSuite extends ADAMFunSuite {
   test("test mismatch quality scoring for no mismatches") {
     val ri = new RealignIndels(sc)
     val read = "AAAAAAAA"
-    val qScores = Seq(40, 40, 40, 40, 40, 40, 40, 40)
+    val qScores = Array(40, 40, 40, 40, 40, 40, 40, 40)
 
     assert(ri.sumMismatchQualityIgnoreCigar(read, read, qScores, Int.MaxValue, 0) === 0)
   }
@@ -338,7 +353,7 @@ class RealignIndelsSuite extends ADAMFunSuite {
     val ri = new RealignIndels(sc)
     val read = "AAAAAAAA"
     val ref = "G%s".format(read)
-    val qScores = Seq(40, 40, 40, 40, 40, 40, 40, 40)
+    val qScores = Array(40, 40, 40, 40, 40, 40, 40, 40)
 
     assert(ri.sumMismatchQualityIgnoreCigar(read, ref, qScores, Int.MaxValue, 1) === 0)
   }
@@ -347,7 +362,7 @@ class RealignIndelsSuite extends ADAMFunSuite {
     val ri = new RealignIndels(sc)
     val read = "AAAAAAAA"
     val ref = "AAGGGGAA"
-    val qScores = Seq(40, 40, 40, 40, 40, 40, 40, 40)
+    val qScores = Array(40, 40, 40, 40, 40, 40, 40, 40)
 
     assert(ri.sumMismatchQualityIgnoreCigar(read, ref, qScores, 120, 0) === Int.MaxValue)
   }
