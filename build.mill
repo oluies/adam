@@ -1,5 +1,7 @@
 //| mill-version: 1.3.1
 //| mill-jvm-version: temurin:17
+//| mvnDeps:
+//| - com.lihaoyi::mill-contrib-scoverage:$MILL_VERSION
 /**
  * Licensed to Big Data Genomics (BDG) under one
  * or more contributor license agreements.  See the NOTICE file
@@ -23,6 +25,7 @@ import mill.*
 import mill.api.BuildCtx
 import mill.scalalib.*
 import mill.scalalib.publish.*
+import mill.contrib.scoverage.{ ScoverageModule, ScoverageReport }
 
 object Versions {
   val adam = "2.0.0-SNAPSHOT"
@@ -30,6 +33,7 @@ object Versions {
   val spark = "4.3.0"
   val sparkMajor = "spark4"
   val jvm = "temurin:17"
+  val scoverage = "2.5.2"
 }
 
 object Deps {
@@ -56,8 +60,9 @@ object Deps {
 }
 
 /** Settings shared by every ADAM JVM module. */
-trait AdamModule extends SbtModule with PublishModule {
+trait AdamModule extends SbtModule with PublishModule with ScoverageModule {
   def scalaVersion = Versions.scala
+  def scoverageVersion = Versions.scoverage
   def jvmVersion = Versions.jvm
 
   /** Artifact names carry the Spark major version, e.g. adam-core-spark4_2.13. */
@@ -79,7 +84,7 @@ trait AdamModule extends SbtModule with PublishModule {
   /** Spark is provided by the cluster at runtime. */
   def compileMvnDeps = Seq(Deps.sparkCore, Deps.sparkSql)
 
-  trait AdamTests extends SbtTests with TestModule.ScalaTest {
+  trait AdamTests extends SbtTests with ScoverageTests with TestModule.ScalaTest {
     def mvnDeps = Seq(Deps.scalatest, Deps.sparkCore, Deps.sparkSql)
 
     /** Like Maven, put this module's own test resources ahead of upstream test modules' (e.g. sorted.vcf). */
@@ -317,4 +322,14 @@ object `adam-r` extends Module {
     os.proc("R", "CMD", "build", "bdgenomics.adam/").call(cwd = moduleDir, stdout = os.Inherit)
     os.proc("R", "CMD", "check", "bdgenomics.adam/").call(cwd = moduleDir, stdout = os.Inherit)
   }
+}
+
+/**
+ * Statement coverage across all modules. Tests run against scoverage-instrumented
+ * classes, so run ./mill __.test first, then ./mill scoverage.xmlReportAll
+ * (or htmlReportAll). scripts/crap.scala combines the XML with method complexity.
+ */
+object scoverage extends ScoverageReport {
+  def scalaVersion = Versions.scala
+  def scoverageVersion = Versions.scoverage
 }

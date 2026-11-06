@@ -19,3 +19,4 @@ build
 .Rproj.user
 .Rhistory
 .RData
+.metrics
