@@ -30,7 +30,8 @@ import scala.meta._
  *
  * Cyclomatic complexity comes from parsing the sources with scalameta, using the
  * decision points crapper uses for Java: if, while, do, for (and each guard),
- * each case of a match, partial function or catch, and each && and ||.
+ * each case of a match, partial function or catch (and each case guard), and
+ * each && and ||.
  * Function literals count toward the enclosing method; nested methods, classes
  * and objects are scored on their own.
  *
@@ -123,7 +124,7 @@ object CrapScala {
       case _: Term.For                       => 1
       case _: Term.ForYield                  => 1
       case _: Enumerator.Guard               => 1
-      case _: Case                           => 1
+      case c: Case                           => if (c.cond.isDefined) 2 else 1
       case t: Term.ApplyInfix if t.op.value == "&&" || t.op.value == "||" => 1
       case _                                 => 0
     }
