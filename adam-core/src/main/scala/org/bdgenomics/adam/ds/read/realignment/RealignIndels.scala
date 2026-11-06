@@ -248,7 +248,7 @@ private[read] class RealignIndels(
    *   soft clipped bases in the read have been dropped.
    */
   def extractSequenceAndQuality(
-    read: RichAlignment): (String, Seq[Int]) = {
+    read: RichAlignment): (String, Array[Int]) = {
 
     // is this read clipped at the start or end? if so, how many bases?
     val richCigar = new RichCigar(read.samtoolsCigar)
@@ -261,8 +261,10 @@ private[read] class RealignIndels(
       (read.record.getSequence,
         read.qualityScoreValues)
     } else {
-      (read.record.getSequence.drop(startClipped).dropRight(endClipped),
-        read.qualityScoreValues.drop(startClipped).dropRight(endClipped))
+      val sequence = read.record.getSequence
+      val qualities = read.qualityScoreValues
+      (sequence.slice(startClipped, sequence.length - endClipped),
+        qualities.slice(startClipped, qualities.length - endClipped))
     }
   }
 
@@ -308,9 +310,8 @@ private[read] class RealignIndels(
         val consensus = if (observedConsensus.size > maxConsensusNumber) {
           // sort by the number of times that the consensus was seen
           // sorts ascending (least frequent comes first), so take from right
-          observedConsensus.sortBy(c => {
-            observedConsensusSeq.count(c == _)
-          }).takeRight(maxConsensusNumber)
+          val timesSeen = observedConsensusSeq.groupBy(identity).map(kv => (kv._1, kv._2.size))
+          observedConsensus.sortBy(timesSeen).takeRight(maxConsensusNumber)
         } else {
           observedConsensus
         }
@@ -322,6 +323,9 @@ private[read] class RealignIndels(
             readsToClean.map(r => sumMismatchQuality(r._1)).toArray
           }
           val totalMismatchSumPreCleaning = mismatchQualities.sum
+
+          // clip each read once, rather than once per consensus
+          val sequencesAndQualities = readsToClean.map(p => extractSequenceAndQuality(p._1)).toArray
 
           /* list to log the outcome of all consensus trials. stores:
            *  - mismatch quality of reads against new consensus sequence
@@ -341,7 +345,7 @@ private[read] class RealignIndels(
             val sweptValues = readsToClean.map(p => {
               val (r, rIdx) = p
               val originalQual = mismatchQualities(rIdx)
-              val (sequence, quality) = extractSequenceAndQuality(r)
+              val (sequence, quality) = sequencesAndQualities(rIdx)
 
               val qualAndPos = sweepReadOverReferenceForQuality(sequence, consensusSequence, quality, originalQual)
 
@@ -614,7 +618,7 @@ private[read] class RealignIndels(
    * @param originalQuality The original score of the read vs. the reference genome.
    * @return Tuple of (mismatch quality score, alignment offset).
    */
-  def sweepReadOverReferenceForQuality(read: String, reference: String, qualities: Seq[Int], originalQuality: Int): (Int, Int) = {
+  def sweepReadOverReferenceForQuality(read: String, reference: String, qualities: Array[Int], originalQuality: Int): (Int, Int) = {
 
     @tailrec def sweep(i: Int,
                        upTo: Int,
@@ -651,7 +655,7 @@ private[read] class RealignIndels(
    */
   def sumMismatchQualityIgnoreCigar(read: String,
                                     reference: String,
-                                    qualities: Seq[Int],
+                                    qualities: Array[Int],
                                     scoreThreshold: Int,
                                     refOffset: Int): Int = {
 
@@ -682,9 +686,9 @@ private[read] class RealignIndels(
    * @param read Read over which to sum mismatch quality.
    * @return Mismatch quality of read for current alignment.
    */
-  def sumMismatchQuality(read: Alignment): Int = {
+  def sumMismatchQuality(read: RichAlignment): Int = {
     sumMismatchQualityIgnoreCigar(
-      read.getSequence,
+      read.record.getSequence,
       read.mdTag.get.getReference(read, withGaps = true),
       read.qualityScoreValues,
       Int.MaxValue,
@@ -733,7 +737,10 @@ private[read] class RealignIndels(
       val readsMappedToTarget = RealignIndels.mapTargets(richRdd,
         targets,
         maxReadsPerTarget = maxReadsPerTarget)
-      richRdd.unpersist()
+      // richRdd stays cached: the group-by-target shuffle in readsMappedToTarget
+      // is lazy and reads it when the result is evaluated. Unpersisting here
+      // would recompute every read from the input. Spark's ContextCleaner
+      // removes the cached blocks once the returned RDD is no longer referenced.
 
       // realign target groups
       info("Sorting reads by reference in ADAM RDD")

@@ -90,7 +90,6 @@ trait AdamModule extends SbtModule with PublishModule {
 
     def forkArgs = Seq(
       "-Xmx2g",
-      "-Dsun.io.serialization.extendedDebugInfo=true",
       // expected test outputs use '.' as the decimal separator
       "-Duser.language=en",
       "-Duser.country=US",
