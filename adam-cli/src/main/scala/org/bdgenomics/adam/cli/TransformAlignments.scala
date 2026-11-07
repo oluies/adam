@@ -180,11 +180,14 @@ class TransformAlignmentsArgs extends Args4jBase with ADAMSaveAnyArgs with Parqu
   @Args4jOption(required = false, name = "-bin_quality_scores", usage = "Rewrites quality scores of reads into bins from a string of bin descriptions, e.g. 0,20,10;20,40,30.")
   var binQualityScores: String = null
 
-  @Args4jOption(required = false, name = "-cache", usage = "Cache data to avoid recomputing between stages.")
-  var cache: Boolean = false
+  @Args4jOption(required = false, name = "-cache", usage = "Cache data to avoid recomputing between stages. The default; kept for compatibility.")
+  var cache: Boolean = true
 
-  @Args4jOption(required = false, name = "-storage_level", usage = "Set the storage level to use for caching.")
-  var storageLevel: String = "MEMORY_ONLY"
+  @Args4jOption(required = false, name = "-no_cache", usage = "Do not cache data between stages; stages that read their input twice recompute it.")
+  var noCache: Boolean = false
+
+  @Args4jOption(required = false, name = "-storage_level", usage = "Set the storage level to use for caching. Defaults to MEMORY_AND_DISK_SER.")
+  var storageLevel: String = "MEMORY_AND_DISK_SER"
 
   @Args4jOption(required = false, name = "-disable_pg", usage = "Disable writing a new @PG line.")
   var disableProcessingStep = false
@@ -266,11 +269,6 @@ class TransformAlignments(protected val args: TransformAlignmentsArgs) extends B
 
       info("Locally realigning indels.")
 
-      // has the user asked us to cache the rdd before multi-pass stages?
-      if (args.cache) {
-        ds.rdd.persist(sl)
-      }
-
       // fold and get the consensus model for this realignment run
       val consensusGenerator = Option(args.knownIndelsFile)
         .fold(ConsensusGenerator.fromReads)(file => {
@@ -296,12 +294,6 @@ class TransformAlignments(protected val args: TransformAlignmentsArgs) extends B
         unclipReads = args.unclipReads
       )
 
-      // unpersist our input, if persisting was requested
-      // we don't reference said rdd again, so unpersisting is ok
-      if (args.cache) {
-        ds.rdd.unpersist()
-      }
-
       realignmentDs
     } else {
       ds
@@ -325,12 +317,9 @@ class TransformAlignments(protected val args: TransformAlignmentsArgs) extends B
 
       info("Recalibrating base qualities")
 
-      // bqsr is a two pass algorithm, so cache the rdd if requested
-      val optSl = if (args.cache) {
-        Some(sl)
-      } else {
-        None
-      }
+      // bqsr is a two pass algorithm (count, then recalibrate): cache the
+      // reads it reads twice, rather than its much larger per-base covariates
+      persistForReuse(ds, sl)
 
       // create the known sites file, if one is available
       val knownSnps: SnpTable = createKnownSnpsTable(ds.rdd.context)
@@ -340,7 +329,7 @@ class TransformAlignments(protected val args: TransformAlignmentsArgs) extends B
       val bqsredDs = ds.recalibrateBaseQualities(
         broadcastedSnps,
         args.minAcceptableQuality,
-        optSl,
+        None,
         optSamplingFraction = Option(args.samplingFraction).filter(_ > 0.0),
         optSamplingSeed = Option(args.samplingSeed).filter(_ != 0L)
       )
@@ -383,12 +372,10 @@ class TransformAlignments(protected val args: TransformAlignmentsArgs) extends B
                         sl: StorageLevel): AlignmentDataset = {
     if (args.sortByReadName || args.sortByReferencePosition || args.sortByReferencePositionAndIndex) {
 
-      // cache the input if requested. sort is two stages:
+      // sort is two stages, which both read the input:
       // 1. sample to create partitioner
       // 2. repartition and sort within partitions
-      if (args.cache) {
-        ds.rdd.persist(sl)
-      }
+      persistForReuse(ds, sl)
 
       val sortedDs = if (args.sortByReadName) {
         info("Sorting alignments by read name")
@@ -399,11 +386,6 @@ class TransformAlignments(protected val args: TransformAlignmentsArgs) extends B
       } else {
         info("Sorting alignments by reference position, with references ordered by index")
         ds.sortByReferencePositionAndIndex()
-      }
-
-      // unpersist the cached rdd, if caching was requested
-      if (args.cache) {
-        ds.rdd.unpersist()
       }
 
       sortedDs
@@ -470,6 +452,21 @@ class TransformAlignments(protected val args: TransformAlignmentsArgs) extends B
 
     // recompute md tags, if requested, and return
     maybeMdTag(sc, maybeSortedDs, stringencyOpt)
+  }
+
+  /**
+   * Datasets persisted for multi-pass stages. They stay persisted until the
+   * output is saved: the passes that read them are lazy, so unpersisting when
+   * a stage is defined would make them recompute everything upstream.
+   */
+  private val persisted = scala.collection.mutable.ListBuffer.empty[RDD[_]]
+
+  /** With -cache, persists the input of a stage that reads it more than once. */
+  private def persistForReuse(ds: AlignmentDataset, sl: StorageLevel): Unit = {
+    if (args.cache && !args.noCache && ds.rdd.getStorageLevel == StorageLevel.NONE) {
+      ds.rdd.persist(sl)
+      persisted += ds.rdd
+    }
   }
 
   def forceNonParquet(): Boolean = {
@@ -635,6 +632,8 @@ class TransformAlignments(protected val args: TransformAlignmentsArgs) extends B
     // rebuild the dataset so the transformation starts from a plain RDD-bound dataset
     val newDs = AlignmentDataset(merged.rdd, merged.references, merged.readGroups, merged.processingSteps)
     saveOutput(this.apply(newDs))
+    persisted.foreach(_.unpersist())
+    persisted.clear()
   }
 
   private def createKnownSnpsTable(sc: SparkContext): SnpTable = {
