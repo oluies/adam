@@ -270,16 +270,6 @@ private[feature] object Features {
                        maximumScore: Double,
                        missingValue: Int): Int = {
 
-    def constrain(v: Double, min: Double, max: Double): Double = {
-      if (v < min) {
-        min
-      } else if (v > max) {
-        max
-      } else {
-        v
-      }
-    }
-
     def interp(value: Double,
                sourceMin: Double,
                sourceMax: Double,

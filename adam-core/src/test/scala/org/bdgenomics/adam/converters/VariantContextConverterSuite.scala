@@ -2590,6 +2590,122 @@ class VariantContextConverterSuite extends ADAMFunSuite {
     assert(adamGt.getVariantCallingAnnotations.getAttributes.get("STRING_G") === "foo,bar,baz")
   }
 
+  test("Convert htsjdk genotype with ref, alt, other alt, and no-call alleles to ADAM") {
+    val gb = new GenotypeBuilder("NA12878", List(Allele.create("A", true),
+      Allele.create("T"),
+      Allele.create("G"),
+      Allele.NO_CALL).asJava)
+
+    val vcb = htsjdkMultiAllelicSNVBuilder
+    vcb.genotypes(gb.make)
+
+    val adamVCs = converter.convert(vcb.make)
+    assert(adamVCs.length === 2)
+    assert(adamVCs(0).genotypes.head.getAlleles.asScala.sameElements(List(GenotypeAllele.REF,
+      GenotypeAllele.ALT,
+      GenotypeAllele.OTHER_ALT,
+      GenotypeAllele.NO_CALL)))
+    assert(adamVCs(1).genotypes.head.getAlleles.asScala.sameElements(List(GenotypeAllele.REF,
+      GenotypeAllele.OTHER_ALT,
+      GenotypeAllele.ALT,
+      GenotypeAllele.NO_CALL)))
+  }
+
+  test("Convert ADAM SNV w/ genotypes but bad SB to htsjdk with silent validation") {
+    val silentConverter = new VariantContextConverter(DefaultHeaderLines.allHeaderLines,
+      ValidationStringency.SILENT, false)
+    val variant = adamSNVBuilder().build
+    val genotype = Genotype.newBuilder
+      .setVariant(variant)
+      .setSampleId("NA12878")
+      .setStrandBiasComponents(List(0, 2).map(i => i: java.lang.Integer).asJava)
+      .setAlleles(List(GenotypeAllele.REF, GenotypeAllele.ALT).asJava)
+      .build
+
+    val optHtsjdkVC = silentConverter.convert(ADAMVariantContext(variant, Seq(genotype)))
+
+    assert(optHtsjdkVC.isDefined)
+    assert(!optHtsjdkVC.get.getGenotype("NA12878").hasAnyAttribute("SB"))
+  }
+
+  def filteredButNullPassedGenotype: Genotype = Genotype.newBuilder
+    .setVariant(v)
+    .setSampleId("NA12878")
+    .setAlleles(List(GenotypeAllele.REF, GenotypeAllele.ALT).asJava)
+    .setVariantCallingAnnotations(VariantCallingAnnotations.newBuilder()
+      .setFiltersApplied(true)
+      .setFisherStrandBiasPValue(3.0f)
+      .build)
+    .build
+
+  test("genotype annotation extraction failure throws with strict validation adam->htsjdk") {
+    intercept[IllegalArgumentException] {
+      strictConverter.convert(ADAMVariantContext(v, Seq(filteredButNullPassedGenotype)))
+    }
+  }
+
+  test("genotype annotation extraction failure is skipped with lenient validation adam->htsjdk") {
+    val optHtsjdkVC = converter.convert(ADAMVariantContext(v, Seq(filteredButNullPassedGenotype)))
+
+    assert(optHtsjdkVC.isDefined)
+    val gt = optHtsjdkVC.get.getGenotype("NA12878")
+    assert(!gt.isFiltered)
+    assert(gt.hasAnyAttribute("FS"))
+  }
+
+  def badIntAttributeContext: ADAMVariantContext = {
+    val vca = VariantCallingAnnotations.newBuilder
+      .setAttributes(ImmutableMap.of("ONE_INT", "notAnInt", "TWO_INTS", "1,2"))
+      .build
+    val g = Genotype.newBuilder
+      .setSampleId("sample")
+      .setVariantCallingAnnotations(vca)
+      .build
+
+    ADAMVariantContext(v, Some(g))
+  }
+
+  val intAttributeHeaders = Seq(
+    new VCFFormatHeaderLine("ONE_INT",
+      1,
+      VCFHeaderLineType.Integer,
+      "Number=1 Type=Integer"),
+    new VCFFormatHeaderLine("TWO_INTS",
+      2,
+      VCFHeaderLineType.Integer,
+      "Number=2 Type=Integer"))
+
+  test("VCF FORMAT attribute extraction failure throws with strict validation adam->htsjdk") {
+    intercept[NumberFormatException] {
+      new VariantContextConverter(DefaultHeaderLines.allHeaderLines ++ intAttributeHeaders,
+        ValidationStringency.STRICT, false)
+        .convert(badIntAttributeContext)
+    }
+  }
+
+  test("VCF FORMAT attribute extraction failure is skipped with lenient validation adam->htsjdk") {
+    val vc = new VariantContextConverter(DefaultHeaderLines.allHeaderLines ++ intAttributeHeaders,
+      lenient, false)
+      .convert(badIntAttributeContext).orNull
+
+    assert(vc.hasGenotypes)
+    val gt = vc.getGenotype("sample")
+    assert(!gt.hasExtendedAttribute("ONE_INT"))
+    assert(gt.hasExtendedAttribute("TWO_INTS"))
+    assert(gt.getExtendedAttribute("TWO_INTS").asInstanceOf[Array[java.lang.Integer]].toSeq === Seq(1, 2))
+  }
+
+  test("VCF FORMAT attribute extraction failure is skipped with silent validation adam->htsjdk") {
+    val vc = new VariantContextConverter(DefaultHeaderLines.allHeaderLines ++ intAttributeHeaders,
+      ValidationStringency.SILENT, false)
+      .convert(badIntAttributeContext).orNull
+
+    assert(vc.hasGenotypes)
+    val gt = vc.getGenotype("sample")
+    assert(!gt.hasExtendedAttribute("ONE_INT"))
+    assert(gt.hasExtendedAttribute("TWO_INTS"))
+  }
+
   sparkTest("respect end position for symbolic alts") {
     val vcRecords = sc.loadVcf(testFile("gvcf_dir/gvcf_multiallelic.g.vcf"))
       .rdd

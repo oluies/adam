@@ -223,6 +223,32 @@ class ParallelFileMergerSuite extends ADAMFunSuite {
     assert(mergedReads.rdd.count === reads.rdd.count)
   }
 
+  def mergeShardedSam(blockSize: Option[Long]) {
+    val reads = sc.loadAlignments(testFile("unmapped.sam"))
+    val outPath = tmpFile("out.sam")
+
+    reads.transform((rdd: RDD[Alignment]) => rdd.repartition(4))
+      .saveAsSam(outPath, asSingleFile = true, deferMerging = true)
+
+    blockSize.foreach(sc.hadoopConfiguration.setLong("fs.local.block.size", _))
+    ParallelFileMerger.mergeFiles(sc,
+      new Path(outPath),
+      new Path(outPath + "_tail"),
+      optHeaderPath = Some(new Path(outPath + "_head")))
+
+    val mergedReads = sc.loadAlignments(outPath)
+
+    assert(mergedReads.rdd.count === reads.rdd.count)
+  }
+
+  sparkTest("merge the files of a sharded sam file into one block") {
+    mergeShardedSam(None)
+  }
+
+  sparkTest("merge the files of a sharded sam file into several blocks") {
+    mergeShardedSam(Some(1024L))
+  }
+
   test("can't turn a negative index into a path") {
     intercept[AssertionError] {
       ParallelFileMerger.indexToPath(-1, "nonsense")

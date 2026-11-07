@@ -1807,15 +1807,7 @@ class VariantContextConverter(
         .setEnd(variant.getEnd)
         .setSampleId(g.getSampleName)
         .setAlleles(g.getAlleles.asScala.map(gtAllele => {
-          if (gtAllele.isReference) {
-            GenotypeAllele.REF
-          } else if (gtAllele.isNoCall) {
-            GenotypeAllele.NO_CALL
-          } else if (gtAllele.equals(allele, true)) {
-            GenotypeAllele.ALT
-          } else {
-            GenotypeAllele.OTHER_ALT
-          }
+          toGenotypeAllele(gtAllele, allele)
         }).asJava)
 
       // was this split?
@@ -1836,21 +1828,10 @@ class VariantContextConverter(
           fn(g, _: Genotype.Builder, alleleIdx, indices)
         })
       val convertedCore = boundFns.foldLeft(builder)((gb: Genotype.Builder, fn) => {
-        try {
-          fn(gb)
-        } catch {
-          case t: Throwable => {
-            if (stringency == ValidationStringency.STRICT) {
-              throw t
-            } else {
-              if (stringency == ValidationStringency.LENIENT) {
-                logger.warn("Converting genotype field in %s with function %s failed: %s".format(
-                  g, fn, t))
-              }
-              gb
-            }
-          }
-        }
+        applyOrRecover(gb)(fn(gb))(t => {
+          "Converting genotype field in %s with function %s failed: %s".format(
+            g, fn, t)
+        })
       })
 
       // if we have a non-ref allele, fold and build
@@ -1871,21 +1852,10 @@ class VariantContextConverter(
         })
       val convertedAnnotations = boundAnnotationFns.foldLeft(vcAnns)(
         (vcab: VariantCallingAnnotations.Builder, fn) => {
-          try {
-            fn(vcab)
-          } catch {
-            case t: Throwable => {
-              if (stringency == ValidationStringency.STRICT) {
-                throw t
-              } else {
-                if (stringency == ValidationStringency.LENIENT) {
-                  logger.warn("Converting genotype annotation field in %s with function %s failed: %s".format(
-                    g, fn, t))
-                }
-                vcab
-              }
-            }
-          }
+          applyOrRecover(vcab)(fn(vcab))(t => {
+            "Converting genotype annotation field in %s with function %s failed: %s".format(
+              g, fn, t)
+          })
         })
 
       // pull out the attribute map and process
@@ -1908,6 +1878,27 @@ class VariantContextConverter(
     }
 
     convert(_, _, _, _, _, _)
+  }
+
+  /**
+   * Converts a htsjdk genotype allele into an ADAM genotype allele.
+   *
+   * @param gtAllele The htsjdk allele called in the genotype.
+   * @param allele The alternate allele of the variant being converted.
+   * @return Returns REF, NO_CALL, ALT if the allele matches the alternate
+   *   allele (ignoring reference status), or OTHER_ALT.
+   */
+  private def toGenotypeAllele(gtAllele: Allele,
+                               allele: Allele): GenotypeAllele = {
+    if (gtAllele.isReference) {
+      GenotypeAllele.REF
+    } else if (gtAllele.isNoCall) {
+      GenotypeAllele.NO_CALL
+    } else if (gtAllele.equals(allele, true)) {
+      GenotypeAllele.ALT
+    } else {
+      GenotypeAllele.OTHER_ALT
+    }
   }
 
   private def singleValueFromString(
@@ -2131,35 +2122,8 @@ class VariantContextConverter(
 
     val attributeFns: Iterable[(Map[String, String]) => Option[(String, java.lang.Object)]] = headerLines
       .flatMap(hl => hl match {
-        case fl: VCFFormatHeaderLine => {
-
-          // get the id of this line
-          val key = fl.getID
-
-          // filter out the lines that we already support
-          if (DefaultHeaderLines.formatHeaderLines
-            .find(_.getID == key)
-            .isDefined) {
-
-            None
-          } else {
-            try {
-              Some(extractorFromFormatLine(fl))
-            } catch {
-              case t: Throwable => {
-                if (stringency == ValidationStringency.STRICT) {
-                  throw t
-                } else {
-                  if (stringency == ValidationStringency.LENIENT) {
-                    logger.warn("Generating field extractor from header line %s failed: %s".format(fl, t))
-                  }
-                  None
-                }
-              }
-            }
-          }
-        }
-        case _ => None
+        case fl: VCFFormatHeaderLine => formatLineAttributeExtractor(fl)
+        case _                       => None
       })
 
     def convert(g: Genotype): HtsjdkGenotype = {
@@ -2171,72 +2135,15 @@ class VariantContextConverter(
       // bind the conversion functions and fold
       val convertedCore = genotypeExtractFns.foldLeft(builder)(
         (gb: GenotypeBuilder, fn) => {
-          try {
-            fn(g, gb)
-          } catch {
-            case t: Throwable => {
-              if (stringency == ValidationStringency.STRICT) {
-                throw t
-              } else {
-                if (stringency == ValidationStringency.LENIENT) {
-                  logger.warn("Applying annotation extraction function %s to %s failed with %s.".format(fn, g, t))
-                }
-
-                gb
-              }
-            }
-          }
+          applyOrRecover(gb)(fn(g, gb))(t => {
+            "Applying annotation extraction function %s to %s failed with %s.".format(fn, g, t)
+          })
         })
 
       // convert the annotations if they exist
       val gtWithAnnotations = Option(g.getVariantCallingAnnotations)
         .fold(convertedCore)(vca => {
-
-          // bind the annotation conversion functions and fold
-          val convertedAnnotations = genotypeAnnotationExtractFns.foldLeft(convertedCore)(
-            (gb: GenotypeBuilder, fn) => {
-              try {
-                fn(vca, gb)
-              } catch {
-                case t: Throwable => {
-                  if (stringency == ValidationStringency.STRICT) {
-                    throw t
-                  } else {
-                    if (stringency == ValidationStringency.LENIENT) {
-                      logger.warn("Applying annotation extraction function %s to %s failed with %s.".format(fn, vca, t))
-                    }
-
-                    gb
-                  }
-                }
-              }
-            })
-
-          // get the attribute map
-          val attributes: Map[String, String] = vca.getAttributes.asScala.toMap
-
-          // apply the attribute converters and return
-          attributeFns.foldLeft(convertedAnnotations)((gb: GenotypeBuilder, fn) => {
-            try {
-              val optAttrPair = fn(attributes)
-
-              optAttrPair.fold(gb)(pair => {
-                gb.attribute(pair._1, pair._2)
-              })
-            } catch {
-              case t: Throwable => {
-                if (stringency == ValidationStringency.STRICT) {
-                  throw t
-                } else {
-                  if (stringency == ValidationStringency.LENIENT) {
-                    logger.warn("Applying attribute extraction function %s to %s failed with %s.".format(fn, vca, t))
-                  }
-
-                  gb
-                }
-              }
-            }
-          })
+          extractGenotypeAnnotations(vca, convertedCore, attributeFns)
         })
 
       // build and return
@@ -2244,6 +2151,102 @@ class VariantContextConverter(
     }
 
     convert(_)
+  }
+
+  /**
+   * Builds the attribute extractor for a FORMAT header line that is not
+   * covered by the default header lines.
+   *
+   * @param fl The FORMAT header line to build an extractor for.
+   * @return Returns None if the line is a default header line, or if building
+   *   the extractor failed under a non-strict validation stringency.
+   */
+  private def formatLineAttributeExtractor(
+    fl: VCFFormatHeaderLine): Option[(Map[String, String]) => Option[(String, java.lang.Object)]] = {
+
+    // get the id of this line
+    val key = fl.getID
+
+    // filter out the lines that we already support
+    if (DefaultHeaderLines.formatHeaderLines
+      .find(_.getID == key)
+      .isDefined) {
+
+      None
+    } else {
+      applyOrRecover(Option.empty[(Map[String, String]) => Option[(String, java.lang.Object)]])(
+        Some(extractorFromFormatLine(fl)))(t => {
+          "Generating field extractor from header line %s failed: %s".format(fl, t)
+        })
+    }
+  }
+
+  /**
+   * Applies the genotype annotation and attribute extraction functions to
+   * a genotype builder.
+   *
+   * @param vca The genotype annotations to extract from.
+   * @param convertedCore The genotype builder with the core fields set.
+   * @param attributeFns The attribute extraction functions to apply.
+   * @return Returns the genotype builder with the annotations attached.
+   */
+  private def extractGenotypeAnnotations(
+    vca: VariantCallingAnnotations,
+    convertedCore: GenotypeBuilder,
+    attributeFns: Iterable[(Map[String, String]) => Option[(String, java.lang.Object)]]): GenotypeBuilder = {
+
+    // bind the annotation conversion functions and fold
+    val convertedAnnotations = genotypeAnnotationExtractFns.foldLeft(convertedCore)(
+      (gb: GenotypeBuilder, fn) => {
+        applyOrRecover(gb)(fn(vca, gb))(t => {
+          "Applying annotation extraction function %s to %s failed with %s.".format(fn, vca, t)
+        })
+      })
+
+    // get the attribute map
+    val attributes: Map[String, String] = vca.getAttributes.asScala.toMap
+
+    // apply the attribute converters and return
+    attributeFns.foldLeft(convertedAnnotations)((gb: GenotypeBuilder, fn) => {
+      applyOrRecover(gb)({
+        val optAttrPair = fn(attributes)
+
+        optAttrPair.fold(gb)(pair => {
+          gb.attribute(pair._1, pair._2)
+        })
+      })(t => {
+        "Applying attribute extraction function %s to %s failed with %s.".format(fn, vca, t)
+      })
+    })
+  }
+
+  /**
+   * Evaluates a conversion step, recovering from any failure according to the
+   * validation stringency.
+   *
+   * Under STRICT validation, the failure is rethrown. Otherwise, the fallback
+   * value is returned, and under LENIENT validation a warning is logged.
+   *
+   * @param fallback The value to return if the step fails non-strictly.
+   * @param step The conversion step to evaluate.
+   * @param warning Builds the warning message to log from the failure.
+   * @return Returns the result of the step, or the fallback on recovery.
+   */
+  private def applyOrRecover[T](fallback: T)(step: => T)(warning: Throwable => String): T = {
+    try {
+      step
+    } catch {
+      case t: Throwable => {
+        if (stringency == ValidationStringency.STRICT) {
+          throw t
+        } else {
+          if (stringency == ValidationStringency.LENIENT) {
+            logger.warn(warning(t))
+          }
+          fallback
+        }
+      }
+    }
   }
 
   /**

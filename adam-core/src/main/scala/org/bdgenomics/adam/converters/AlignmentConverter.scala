@@ -271,34 +271,8 @@ class AlignmentConverter extends Serializable with Logging {
     maybeAddSuffix: Boolean,
     writeOriginalQualityScores: Boolean): (String, String, String) = {
 
-    val readNameSuffix =
-      if (maybeAddSuffix &&
-        !AlignmentConverter.readNameHasPairedSuffix(adamRecord) &&
-        adamRecord.getReadPaired) {
-        "/%d".format(adamRecord.getReadInFragment + 1)
-      } else {
-        ""
-      }
-
-    //"B" is used to represent "unknown quality score"
-    //https://en.wikipedia.org/wiki/FASTQ_format#cite_note-7
-    //FastQ format quality score string must be the same length as the sequence string
-    //https://en.wikipedia.org/wiki/FASTQ_format#Format
-    val seqLength =
-      if (adamRecord.getSequence == null)
-        0
-      else
-        adamRecord.getSequence.length
-    val qualityScores =
-      if (writeOriginalQualityScores && adamRecord.getOriginalQualityScores != null)
-        if (adamRecord.getOriginalQualityScores == "*")
-          "B" * seqLength
-        else
-          adamRecord.getOriginalQualityScores
-      else if (adamRecord.getQualityScores == null)
-        "B" * seqLength
-      else
-        adamRecord.getQualityScores
+    val readNameSuffix = fastqReadNameSuffix(adamRecord, maybeAddSuffix)
+    val qualityScores = fastqQualityScores(adamRecord, writeOriginalQualityScores)
 
     (
       adamRecord.getReadName + readNameSuffix,
@@ -311,6 +285,37 @@ class AlignmentConverter extends Serializable with Logging {
       else
         qualityScores
     )
+  }
+
+  private def fastqReadNameSuffix(adamRecord: Alignment, maybeAddSuffix: Boolean): String = {
+    if (maybeAddSuffix &&
+      !AlignmentConverter.readNameHasPairedSuffix(adamRecord) &&
+      adamRecord.getReadPaired) {
+      "/%d".format(adamRecord.getReadInFragment + 1)
+    } else {
+      ""
+    }
+  }
+
+  private def fastqQualityScores(adamRecord: Alignment, writeOriginalQualityScores: Boolean): String = {
+    //"B" is used to represent "unknown quality score"
+    //https://en.wikipedia.org/wiki/FASTQ_format#cite_note-7
+    //FastQ format quality score string must be the same length as the sequence string
+    //https://en.wikipedia.org/wiki/FASTQ_format#Format
+    val seqLength =
+      if (adamRecord.getSequence == null)
+        0
+      else
+        adamRecord.getSequence.length
+    if (writeOriginalQualityScores && adamRecord.getOriginalQualityScores != null)
+      if (adamRecord.getOriginalQualityScores == "*")
+        "B" * seqLength
+      else
+        adamRecord.getOriginalQualityScores
+    else if (adamRecord.getQualityScores == null)
+      "B" * seqLength
+    else
+      adamRecord.getQualityScores
   }
 
   /**

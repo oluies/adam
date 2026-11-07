@@ -37,24 +37,31 @@ object AttributeUtils {
    * @return Returns an Attribute instance.
    */
   def convertSAMTagAndValue(attr: SAMTagAndValue): Attribute = {
-    if (attr.value.isInstanceOf[TagValueAndUnsignedArrayFlag]) {
-      attr.value.asInstanceOf[TagValueAndUnsignedArrayFlag].value match {
-        case x: Array[Int]   => Attribute(attr.tag, TagType.NumericUnsignedIntSequence, x.asInstanceOf[Array[Int]])
-        case x: Array[Byte]  => Attribute(attr.tag, TagType.NumericUnsignedByteSequence, x.asInstanceOf[Array[Byte]])
-        case x: Array[Short] => Attribute(attr.tag, TagType.NumericUnsignedShortSequence, x.asInstanceOf[Array[Short]])
-      }
-    } else {
-      attr.value match {
-        case x: java.lang.Integer   => Attribute(attr.tag, TagType.Integer, x)
-        case x: java.lang.Character => Attribute(attr.tag, TagType.Character, x)
-        case x: java.lang.Float     => Attribute(attr.tag, TagType.Float, x)
-        case x: java.lang.String    => Attribute(attr.tag, TagType.String, x)
-        case x: Array[Int]          => Attribute(attr.tag, TagType.NumericIntSequence, x.asInstanceOf[Array[Int]])
-        case x: Array[Byte]         => Attribute(attr.tag, TagType.NumericByteSequence, x.asInstanceOf[Array[Byte]])
-        case x: Array[Short]        => Attribute(attr.tag, TagType.NumericShortSequence, x.asInstanceOf[Array[Short]])
-        case x: Array[Float]        => Attribute(attr.tag, TagType.NumericFloatSequence, x.asInstanceOf[Array[Float]])
-        // attr.value for type 'H' is indistinguishable from 'B:c', so both will be saved as NumericByteSequence.
-      }
+    attr.value match {
+      case unsigned: TagValueAndUnsignedArrayFlag => unsignedArrayAttribute(attr.tag, unsigned.value)
+      case value                                  => signedAttribute(attr.tag, value)
+    }
+  }
+
+  private def unsignedArrayAttribute(tag: String, value: Any): Attribute = {
+    value match {
+      case x: Array[Int]   => Attribute(tag, TagType.NumericUnsignedIntSequence, x)
+      case x: Array[Byte]  => Attribute(tag, TagType.NumericUnsignedByteSequence, x)
+      case x: Array[Short] => Attribute(tag, TagType.NumericUnsignedShortSequence, x)
+    }
+  }
+
+  private def signedAttribute(tag: String, value: Any): Attribute = {
+    value match {
+      case x: java.lang.Integer   => Attribute(tag, TagType.Integer, x)
+      case x: java.lang.Character => Attribute(tag, TagType.Character, x)
+      case x: java.lang.Float     => Attribute(tag, TagType.Float, x)
+      case x: java.lang.String    => Attribute(tag, TagType.String, x)
+      case x: Array[Int]          => Attribute(tag, TagType.NumericIntSequence, x)
+      case x: Array[Byte]         => Attribute(tag, TagType.NumericByteSequence, x)
+      case x: Array[Short]        => Attribute(tag, TagType.NumericShortSequence, x)
+      case x: Array[Float]        => Attribute(tag, TagType.NumericFloatSequence, x)
+      // attr.value for type 'H' is indistinguishable from 'B:c', so both will be saved as NumericByteSequence.
     }
   }
 
