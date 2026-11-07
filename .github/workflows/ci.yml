@@ -18,15 +18,16 @@ jobs:
       - run: ./mill --ticker false __.test
       - run: ./mill --ticker false __.scoverage.xmlReport + jacoco.report
       - uses: astral-sh/setup-uv@v10
-      # Python that runs without Spark: lint, format, types and unit tests
+      # Python that runs without Spark: lint, format, types and unit tests.
+      # ruff and ty are pinned so a new release cannot fail an unrelated PR.
       - name: Python checks
         env:
           PY: scripts/fastq-interleaver.py scripts/test_fastq_interleaver.py adam-python/setup.py adam-python/bdgenomics/adam/find_adam_home.py adam-python/bdgenomics/adam/converters.py adam-python/tests/converters_test.py
         run: |
-          uvx ruff check $PY
-          uvx ruff format --check $PY
+          uvx ruff@0.17.4 check $PY
+          uvx ruff@0.17.4 format --check $PY
           uv venv .pyenv && uv pip install --python .pyenv pytest setuptools
-          uvx ty check --python .pyenv $PY
+          uvx ty@0.0.99 check --python .pyenv $PY
           .pyenv/bin/python -m pytest -q scripts
           .pyenv/bin/python -m pytest -q adam-python/tests
       # CRAP scores (report only, no gate yet). crapper's Scala support is in

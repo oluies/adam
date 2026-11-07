@@ -501,7 +501,7 @@ class TransformAlignments(protected val args: TransformAlignmentsArgs) extends B
       (args.useAlignedReadPredicate && args.regionPredicate != null) ->
         "-aligned_read_predicate and -region_predicate are mutually exclusive",
       (Seq(args.sortByReadName, args.sortByReferencePosition, args.sortByReferencePositionAndIndex).count(b => b) > 1) ->
-        "only one of -sort_by_name, -sort_by_reference_position, and -sort_by_reference_position_and_index may be specified"
+        "only one of -sort_by_read_name, -sort_by_reference_position, and -sort_by_reference_position_and_index may be specified"
     )
   }
 

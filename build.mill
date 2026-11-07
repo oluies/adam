@@ -372,8 +372,9 @@ object `adam-r` extends Module {
 
 /**
  * Statement coverage across all modules. Tests run against scoverage-instrumented
- * classes, so run ./mill __.test first, then ./mill scoverage.xmlReportAll
- * (or htmlReportAll). scripts/crap.scala combines the XML with method complexity.
+ * classes: run ./mill __.test, then ./mill __.scoverage.xmlReport (per module, as
+ * crapper reads it) or ./mill scoverage.htmlReportAll. With ./mill jacoco.report for
+ * the Java classes, `crapper --use-existing-coverage` then scores every function.
  */
 object scoverage extends ScoverageReport {
   def scalaVersion = Versions.scala

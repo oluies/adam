@@ -132,7 +132,7 @@ class TransformAlignmentsSuite extends ADAMFunSuite {
   }
 
   sparkTest("reject more than one sort flag") {
-    rejects(copyResource("unordered.sam"), "only one of -sort_by_name",
+    rejects(copyResource("unordered.sam"), "only one of -sort_by_read_name, -sort_by_reference_position, and -sort_by_reference_position_and_index",
       "-sort_by_read_name", "-sort_by_reference_position")
   }
 
