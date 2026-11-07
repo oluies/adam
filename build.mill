@@ -99,22 +99,18 @@ trait AdamModule extends SbtModule with PublishModule with ScoverageModule {
 
     def jacocoAgent = Task { defaultResolver().classpath(Seq(Deps.jacocoAgent)).head }
 
-    /** This module's JaCoCo execution data; jacoco.report merges every module's file. */
-    def jacocoExec: os.Path = BuildCtx.workspaceRoot / "out" / "jacoco-data" / s"${moduleSegments.render}.exec"
-
     /**
-     * Deletes this module's JaCoCo data on every evaluation, before the forked
-     * tests start, so coverage from earlier runs is not counted. A Task.Input
-     * is re-evaluated on every run; the agent appends within one run.
+     * A fresh JaCoCo data file for each Mill run, out/jacoco-data/<module>/<time>.exec.
+     * jacoco.report reads the newest file of each module, so earlier runs are not
+     * counted, and evaluating forkArgs without running tests loses nothing.
      */
-    def jacocoReset = Task.Input {
-      BuildCtx.withFilesystemCheckerDisabled(os.remove(jacocoExec))
-      jacocoExec.toString
+    def jacocoExec = Task.Input {
+      (BuildCtx.workspaceRoot / "out" / "jacoco-data" / moduleSegments.render / s"${System.currentTimeMillis}.exec").toString
     }
 
     /** scoverage measures Scala; this JaCoCo agent measures the Java classes (see jacoco.report). */
     def jacocoArgs = Task {
-      Seq(s"-javaagent:${jacocoAgent().path}=destfile=${jacocoReset()},append=true,includes=org.bdgenomics.*")
+      Seq(s"-javaagent:${jacocoAgent().path}=destfile=${jacocoExec()},append=true,includes=org.bdgenomics.*")
     }
 
     def forkArgs = Task { jacocoArgs() ++ baseForkArgs }
@@ -379,7 +375,10 @@ object jacoco extends Module {
     val cli = `adam-core`.defaultResolver().classpath(Seq(Deps.jacocoCli)).map(_.path)
     val xml = BuildCtx.workspaceRoot / "target" / "site" / "jacoco" / "jacoco.xml"
     BuildCtx.withFilesystemCheckerDisabled {
-      val execs = os.list(BuildCtx.workspaceRoot / "out" / "jacoco-data").filter(_.ext == "exec").map(_.toString)
+      // the newest data file of each module is its latest test run
+      val execs = os.list(BuildCtx.workspaceRoot / "out" / "jacoco-data").filter(os.isDir)
+        .flatMap(module => os.list(module).filter(_.ext == "exec").maxByOption(_.last))
+        .map(_.toString)
       os.makeDir.all(xml / os.up)
       mill.util.Jvm.callProcess(
         mainClass = "org.jacoco.cli.internal.Main",
