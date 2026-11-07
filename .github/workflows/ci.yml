@@ -17,7 +17,7 @@ jobs:
       - run: ./mill --ticker false jacoco.reset
       - run: ./mill --ticker false __.test
       - run: ./mill --ticker false __.scoverage.xmlReport + jacoco.report
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.3.3
       # Python that runs without Spark: lint, format, types and unit tests.
       # ruff and ty are pinned so a new release cannot fail an unrelated PR.
       - name: Python checks
