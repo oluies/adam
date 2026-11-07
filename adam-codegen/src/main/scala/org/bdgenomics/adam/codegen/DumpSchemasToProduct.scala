@@ -28,6 +28,26 @@ object DumpSchemasToProduct {
   }
 }
 
+/**
+ * How an Avro primitive maps to Scala: the Scala type, the boxed Java type the
+ * Avro record holds, and the lambda parameter name used in generated code.
+ */
+private[codegen] case class Primitive(scalaType: String, javaType: String, param: String)
+
+private[codegen] object Primitive {
+  val byType: Map[Schema.Type, Primitive] = Map(
+    Schema.Type.DOUBLE -> Primitive("Double", "java.lang.Double", "d"),
+    Schema.Type.FLOAT -> Primitive("Float", "java.lang.Float", "f"),
+    Schema.Type.INT -> Primitive("Int", "java.lang.Integer", "i"),
+    Schema.Type.LONG -> Primitive("Long", "java.lang.Long", "l"),
+    Schema.Type.BOOLEAN -> Primitive("Boolean", "java.lang.Boolean", "b")
+  )
+
+  def apply(schemaType: Schema.Type): Primitive = {
+    byType.getOrElse(schemaType, throw new IllegalStateException("Unsupported type %s.".format(schemaType)))
+  }
+}
+
 class DumpSchemasToProduct extends Generator {
 
   private def toMatch(fields: Seq[(String, String)]): String = {
@@ -39,16 +59,11 @@ class DumpSchemasToProduct extends Generator {
       }).mkString("\n")
   }
 
-  private def getType(schema: Schema): String = schema.getType match {
-    case Schema.Type.DOUBLE  => "Double"
-    case Schema.Type.FLOAT   => "Float"
-    case Schema.Type.INT     => "Int"
-    case Schema.Type.LONG    => "Long"
-    case Schema.Type.BOOLEAN => "Boolean"
-    case Schema.Type.STRING  => "String"
-    case Schema.Type.ENUM    => "String"
-    case Schema.Type.RECORD  => schema.getName()
-    case other               => throw new IllegalStateException("Unsupported type %s.".format(other))
+  /** The Scala type of a field holding this schema. */
+  private[codegen] def getType(schema: Schema): String = schema.getType match {
+    case Schema.Type.STRING | Schema.Type.ENUM => "String"
+    case Schema.Type.RECORD                    => schema.getName()
+    case other                                 => Primitive(other).scalaType
   }
 
   private def getUnionType(schema: Schema): Schema = {
@@ -83,16 +98,14 @@ class DumpSchemasToProduct extends Generator {
       }).toSeq
   }
 
-  private def conversion(schema: Schema, mapFn: String): String = schema.getType match {
-    case Schema.Type.DOUBLE  => ".%s(d => d: java.lang.Double)".format(mapFn)
-    case Schema.Type.FLOAT   => ".%s(f => f: java.lang.Float)".format(mapFn)
-    case Schema.Type.INT     => ".%s(i => i: java.lang.Integer)".format(mapFn)
-    case Schema.Type.LONG    => ".%s(l => l: java.lang.Long)".format(mapFn)
-    case Schema.Type.BOOLEAN => ".%s(b => b: java.lang.Boolean)".format(mapFn)
-    case Schema.Type.STRING  => ""
-    case Schema.Type.ENUM    => ".%s(e => %s.valueOf(e))".format(mapFn, schema.getFullName)
-    case Schema.Type.RECORD  => ".%s(r => r.toAvro)".format(mapFn)
-    case other               => throw new IllegalStateException("Unsupported type %s.".format(other))
+  /** Generated code converting a Scala collection element of this schema to its Avro form. */
+  private[codegen] def conversion(schema: Schema, mapFn: String): String = schema.getType match {
+    case Schema.Type.STRING => ""
+    case Schema.Type.ENUM   => ".%s(e => %s.valueOf(e))".format(mapFn, schema.getFullName)
+    case Schema.Type.RECORD => ".%s(r => r.toAvro)".format(mapFn)
+    case other =>
+      val p = Primitive(other)
+      ".%s(%s => %s: %s)".format(mapFn, p.param, p.param, p.javaType)
   }
 
   private def setters(schema: Schema): String = {
@@ -151,16 +164,14 @@ class DumpSchemasToProduct extends Generator {
     )
   }
 
-  private def getConversion(schema: Schema, mapFn: String): String = schema.getType match {
-    case Schema.Type.DOUBLE  => ".%s(d => d: Double)".format(mapFn)
-    case Schema.Type.FLOAT   => ".%s(f => f: Float)".format(mapFn)
-    case Schema.Type.INT     => ".%s(i => i: Int)".format(mapFn)
-    case Schema.Type.LONG    => ".%s(l => l: Long)".format(mapFn)
-    case Schema.Type.BOOLEAN => ".%s(b => b: Boolean)".format(mapFn)
-    case Schema.Type.STRING  => ""
-    case Schema.Type.ENUM    => ".%s(e => e.toString)".format(mapFn)
-    case Schema.Type.RECORD  => ".%s(r => %s.fromAvro(r))".format(mapFn, schema.getName)
-    case other               => throw new IllegalStateException("Unsupported type %s.".format(other))
+  /** Generated code converting an Avro collection element of this schema to its Scala form. */
+  private[codegen] def getConversion(schema: Schema, mapFn: String): String = schema.getType match {
+    case Schema.Type.STRING => ""
+    case Schema.Type.ENUM   => ".%s(e => e.toString)".format(mapFn)
+    case Schema.Type.RECORD => ".%s(r => %s.fromAvro(r))".format(mapFn, schema.getName)
+    case other =>
+      val p = Primitive(other)
+      ".%s(%s => %s: %s)".format(mapFn, p.param, p.param, p.scalaType)
   }
 
   private def getters(schema: Schema): String = {

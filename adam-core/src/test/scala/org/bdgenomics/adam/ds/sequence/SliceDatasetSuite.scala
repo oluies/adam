@@ -24,6 +24,7 @@ import org.bdgenomics.adam.models.{
   SequenceRecord
 }
 import org.bdgenomics.adam.ds.ADAMContext._
+import org.bdgenomics.adam.models.ReferenceRegion
 import org.bdgenomics.adam.util.ADAMFunSuite
 import org.bdgenomics.formats.avro.{
   Alphabet,
@@ -82,6 +83,25 @@ class SliceDatasetSuite extends ADAMFunSuite {
   sparkTest("create a new slice genomic dataset with references") {
     val slices: RDD[Slice] = sc.parallelize(Seq(s1, s2, s3))
     assert(SliceDataset(slices, references, Seq.empty).rdd.count === 3)
+  }
+
+  sparkTest("extract regions, joining the slices a region spans") {
+    def slice(start: Long, sequence: String) = Slice.newBuilder()
+      .setName("chr1")
+      .setAlphabet(Alphabet.DNA)
+      .setSequence(sequence)
+      .setStart(start)
+      .setEnd(start + sequence.length)
+      .setLength(sequence.length.toLong)
+      .build
+    val slices = SliceDataset(sc.parallelize(Seq(slice(0L, "ACTG"), slice(4L, "TTAA"))))
+
+    val within = ReferenceRegion("chr1", 1L, 3L)
+    val across = ReferenceRegion("chr1", 2L, 6L)
+    val outside = ReferenceRegion("chr2", 0L, 2L)
+    val extracted = slices.extractRegions(Seq(within, across, outside)).collect().toMap
+
+    assert(extracted === Map(within -> "CT", across -> "TGTT"))
   }
 
   sparkTest("merge slices into a sequence genomic dataset") {

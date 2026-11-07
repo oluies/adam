@@ -34,6 +34,7 @@ object Versions {
   val sparkMajor = "spark4"
   val jvm = "temurin:17"
   val scoverage = "2.5.2"
+  val jacoco = "0.8.16"
 }
 
 object Deps {
@@ -54,6 +55,9 @@ object Deps {
   val httpclient = mvn"org.apache.httpcomponents:httpclient:4.5.14"
   val parquetAvro = mvn"org.apache.parquet:parquet-avro:1.17.0"
   val scalaGuice = mvn"net.codingwell::scala-guice:7.0.0"
+
+  val jacocoAgent = mvn"org.jacoco:org.jacoco.agent:${Versions.jacoco};classifier=runtime"
+  val jacocoCli = mvn"org.jacoco:org.jacoco.cli:${Versions.jacoco};classifier=nodeps"
 
   val mockito = mvn"org.mockito:mockito-core:5.14.2"
   val scalatest = mvn"org.scalatest::scalatest:3.0.9"
@@ -93,7 +97,17 @@ trait AdamModule extends SbtModule with PublishModule with ScoverageModule {
       local ++ super.runClasspath().filterNot(local.contains)
     }
 
-    def forkArgs = Seq(
+    def jacocoAgent = Task { defaultResolver().classpath(Seq(Deps.jacocoAgent)).head }
+
+    /** scoverage measures Scala; this JaCoCo agent measures the Java classes (see jacoco.report). */
+    def jacocoArgs = Task {
+      val exec = BuildCtx.workspaceRoot / "out" / "jacoco" / "jacoco.exec"
+      Seq(s"-javaagent:${jacocoAgent().path}=destfile=$exec,append=true,includes=org.bdgenomics.*")
+    }
+
+    def forkArgs = Task { jacocoArgs() ++ baseForkArgs }
+
+    private def baseForkArgs = Seq(
       "-Xmx2g",
       // expected test outputs use '.' as the decimal separator
       "-Duser.language=en",
@@ -137,6 +151,11 @@ object `adam-utils` extends AdamModule {
 object `adam-codegen` extends AdamModule {
   def mvnDeps = Seq(Deps.avro)
   def compileMvnDeps = Seq.empty[Dep]
+
+  object test extends AdamTests {
+    // generate from real bdg-formats records, as adam-core's build does
+    def mvnDeps = super.mvnDeps() ++ Seq(Deps.bdgFormats)
+  }
 }
 
 object `adam-core` extends AdamModule {
@@ -332,4 +351,34 @@ object `adam-r` extends Module {
 object scoverage extends ScoverageReport {
   def scalaVersion = Versions.scala
   def scoverageVersion = Versions.scoverage
+}
+
+/**
+ * Java coverage. Tests run with the JaCoCo agent (see AdamTests.jacocoArgs); after ./mill __.test,
+ * ./mill jacoco.report writes target/site/jacoco/jacoco.xml, where crapper reads Java coverage.
+ */
+object jacoco extends Module {
+  private def measured = Seq(`adam-utils`, `adam-codegen`, `adam-core`, `adam-apis`, `adam-cli`)
+
+  def report() = Task.Command {
+    // the tests load the scoverage builds of each module, so report on those class files
+    val classes = Task.sequence(measured.map(_.scoverage.compile))().map(_.classes.path)
+    val sources = Task.sequence(measured.map(_.allSources))().flatten.map(_.path).filter(os.exists)
+    val cli = `adam-core`.defaultResolver().classpath(Seq(Deps.jacocoCli)).map(_.path)
+    val exec = BuildCtx.workspaceRoot / "out" / "jacoco" / "jacoco.exec"
+    val xml = BuildCtx.workspaceRoot / "target" / "site" / "jacoco" / "jacoco.xml"
+    BuildCtx.withFilesystemCheckerDisabled {
+      os.makeDir.all(xml / os.up)
+      mill.util.Jvm.callProcess(
+        mainClass = "org.jacoco.cli.internal.Main",
+        classPath = cli,
+        mainArgs = Seq("report", exec.toString, "--xml", xml.toString) ++
+          classes.flatMap(c => Seq("--classfiles", c.toString)) ++
+          sources.flatMap(s => Seq("--sourcefiles", s.toString)),
+        javaHome = `adam-core`.javaHome().map(_.path),
+        stdout = os.Inherit
+      )
+    }
+    xml.toString
+  }
 }

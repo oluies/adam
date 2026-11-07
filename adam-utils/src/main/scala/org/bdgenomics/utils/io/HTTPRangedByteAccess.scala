@@ -19,6 +19,7 @@ package org.bdgenomics.utils.io
 
 import java.io.InputStream
 import java.net.URI
+import org.apache.http.HttpResponse
 import org.apache.http.client.HttpClient
 import org.apache.http.client.methods.{ HttpGet, HttpHead }
 import org.apache.http.impl.client.{ HttpClients, StandardHttpRequestRetryHandler }
@@ -30,6 +31,8 @@ import org.apache.http.impl.client.{ HttpClients, StandardHttpRequestRetryHandle
  * @param retries Number of times to retry a failed connection before giving up
  */
 class HTTPRangedByteAccess(uri: URI, retries: Int = 3) extends ByteAccess {
+  import HTTPRangedByteAccess._
+
   private def getClient: HttpClient = {
     HttpClients.custom()
       .setRetryHandler(new StandardHttpRequestRetryHandler(retries, true))
@@ -37,47 +40,13 @@ class HTTPRangedByteAccess(uri: URI, retries: Int = 3) extends ByteAccess {
   }
 
   private def readLength(): Long = {
-    val head = new HttpHead(uri)
-    val response = getClient.execute(head)
-    val headers = response.getAllHeaders
-
-    // The spec (http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.5) says that
-    // Accept-Ranges can return values of 'bytes', 'none', or any other acceptable range-unit;
-    // however, "bytes" is the only range-unit recognized in HTTP/1.1 and that clients may choose
-    // to ignore other range-unit values.
-    // Therefore, we ignore non-standard range values, issuing only a warning when we see them.
-    // The spec says that _no_ Accept-Ranges header is possible and the resource may still
-    // respect range queries -- but if the Accept-Ranges header _is_ present, and the value is
-    // "none", then no range requests are allowed.  In this case, that means we throw an
-    // exception.
-    headers.find(_.getName == "Accept-Ranges") match {
-      case Some(header) => header.getValue match {
-        case "none" => throw new IllegalStateException(
-          "Server for \"%s\" doesn't accept range requests (\"Accept-Ranges: none\" header in HEAD request response)"
-            .format(uri.toString))
-        case "bytes"       =>
-        case value: String =>
-      }
-      case None =>
-    }
-
-    // This is the Content-Length of the entire resource (as opposed to the Content-Length value
-    // on the range request, below -- that's just the length of the portion of the resource that
-    // was returned).
-    headers.find(_.getName == "Content-Length") match {
-      case None => throw new IllegalStateException("Unknown length of content for \"%s\" (No \"Content-Length\" header)"
-        .format(uri.toString))
-      case Some(header) => header.getValue.toLong
-    }
+    val response = getClient.execute(new HttpHead(uri))
+    checkAcceptsRanges(uri, header(response, "Accept-Ranges"))
+    // the Content-Length of the whole resource, not of a range
+    contentLength(uri, header(response, "Content-Length"))
   }
 
   private lazy val _length = readLength()
-
-  /*
-   Regex to read the Content-Range response header, as described in:
-   http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.16
-    */
-  private val byteRangeResponseRegex = "bytes\\s((?:\\*|\\d+-\\d+))/((?:\\*|\\d+))".r
 
   override def length(): Long = _length
 
@@ -92,7 +61,7 @@ class HTTPRangedByteAccess(uri: URI, retries: Int = 3) extends ByteAccess {
   override def readByteStream(offset: Long, length: Int): InputStream = {
     val get = new HttpGet(uri)
 
-    // I believe the 'end' coordinate on the range request is _inclusive_
+    // the end of a byte range is inclusive
     get.setHeader("Range", "bytes=%d-%d".format(offset, offset + length - 1))
 
     val response = getClient.execute(get)
@@ -102,42 +71,70 @@ class HTTPRangedByteAccess(uri: URI, retries: Int = 3) extends ByteAccess {
       "Range request on \"%s\", expected status code 206 but received %d (%s)"
         .format(uri.toString, response.getStatusLine.getStatusCode, response.getStatusLine.getReasonPhrase))
 
-    // This big nested set of case statements is to make sure that
-    // 1. we have a Content-Range in the header,
-    // 2. that the value of the Content-Range header matches the regex (see above), and
-    // 3. that the regex, if it contains a range field "start-end", that the
-    //    a) 'start' value matches the 'offset' argument, and
-    //    b) 'end' - 'start' + 1 matches the 'length' argument.
-
-    // First, we check condition (1)
-    response.getAllHeaders.find(_.getName == "Content-Range") match {
-      case None => throw new IllegalStateException("Ranged GET didn't return a Content-Range header")
-
-      // Now, we check condition (2)
-      case Some(header) => byteRangeResponseRegex.findFirstMatchIn(header.getValue) match {
-        case None => throw new IllegalStateException("Content-Range header value \"%s\" didn't match the expected format".format(header.getValue))
-
-        // Finally, we check condition (3)
-        case Some(m) => m.group(1) match {
-          case "*" =>
-          case str: String => str.split("-").toSeq match {
-            case Seq(start, end) =>
-              // Here is the check on (3a)
-              if (start.toLong != offset)
-                throw new IllegalArgumentException(
-                  "Content-Range response start %d (from header \"%s\") doesn't match offset %d"
-                    .format(start.toLong, header.getValue, offset))
-              // here is the check on (3b)
-              if (end.toLong - start.toLong + 1 != length)
-                throw new IllegalArgumentException(
-                  "Content-Range response length %d (from header \"%s\") doesn't match length %d"
-                    .format(end.toLong - start.toLong + 1, header.getValue, length))
-          }
-
-        }
-      }
-    }
+    checkContentRange(header(response, "Content-Range"), offset, length)
 
     response.getEntity.getContent
+  }
+}
+
+private[io] object HTTPRangedByteAccess {
+
+  /*
+   Regex to read the Content-Range response header, as described in:
+   http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.16
+    */
+  private val byteRangeResponseRegex = "bytes\\s((?:\\*|\\d+-\\d+))/((?:\\*|\\d+))".r
+
+  /** The value of a response header; header names are case-insensitive. */
+  private def header(response: HttpResponse, name: String): Option[String] = {
+    Option(response.getFirstHeader(name)).map(_.getValue)
+  }
+
+  /**
+   * "bytes" is the only range unit HTTP/1.1 defines, and other units may be
+   * ignored. A missing Accept-Ranges header does not mean ranges are refused;
+   * only "none" does.
+   * See http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.5
+   */
+  private[io] def checkAcceptsRanges(uri: URI, acceptRanges: Option[String]): Unit = {
+    if (acceptRanges.contains("none")) {
+      throw new IllegalStateException(
+        "Server for \"%s\" doesn't accept range requests (\"Accept-Ranges: none\" header in HEAD request response)"
+          .format(uri.toString))
+    }
+  }
+
+  private[io] def contentLength(uri: URI, contentLength: Option[String]): Long = {
+    contentLength.map(_.toLong).getOrElse(
+      throw new IllegalStateException("Unknown length of content for \"%s\" (No \"Content-Length\" header)"
+        .format(uri.toString)))
+  }
+
+  /**
+   * Checks that a Content-Range header is present, has the expected format,
+   * and, unless the range is "*", starts at offset and covers length bytes.
+   */
+  private[io] def checkContentRange(contentRange: Option[String], offset: Long, length: Int): Unit = {
+    val value = contentRange.getOrElse(
+      throw new IllegalStateException("Ranged GET didn't return a Content-Range header"))
+    val range = byteRangeResponseRegex.findFirstMatchIn(value).map(_.group(1)).getOrElse(
+      throw new IllegalStateException("Content-Range header value \"%s\" didn't match the expected format".format(value)))
+    if (range != "*") {
+      checkRange(value, range, offset, length)
+    }
+  }
+
+  private def checkRange(value: String, range: String, offset: Long, length: Int): Unit = {
+    val Array(start, end) = range.split("-").map(_.toLong)
+    if (start != offset) {
+      throw new IllegalArgumentException(
+        "Content-Range response start %d (from header \"%s\") doesn't match offset %d"
+          .format(start, value, offset))
+    }
+    if (end - start + 1 != length) {
+      throw new IllegalArgumentException(
+        "Content-Range response length %d (from header \"%s\") doesn't match length %d"
+          .format(end - start + 1, value, length))
+    }
   }
 }

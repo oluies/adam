@@ -42,6 +42,7 @@ from py4j.java_gateway import get_java_class
 from pyspark.rdd import RDD
 from pyspark.sql import DataFrame, SQLContext
 
+from bdgenomics.adam.converters import converter_suffix
 from bdgenomics.adam.stringency import LENIENT, _toJava
 
 _log = logging.getLogger(__name__)
@@ -229,26 +230,7 @@ class GenomicDataset(object):
 
     def _destClassSuffix(self, destClass):
 
-        if destClass is CoverageDataset:
-            return "CoverageDatasetConverter"
-        elif destClass is FeatureDataset:
-            return "FeaturesDatasetConverter"
-        elif destClass is FragmentDataset:
-            return "FragmentDatasetConverter"
-        elif destClass is AlignmentDataset:
-            return "AlignmentDatasetConverter"
-        elif destClass is GenotypeDataset:
-            return "GenotypeDatasetConverter"
-        elif destClass is VariantDataset:
-            return "VariantDatasetConverter"
-        elif destClass is ReadDataset:
-            return "ReadDatasetConverter"
-        elif destClass is SequenceDataset:
-            return "SequenceDatasetConverter"
-        elif destClass is Dataset:
-            return "SliceDatasetConverter"
-        else:
-            raise ValueError("No conversion method known for %s." % destClass)
+        return converter_suffix(destClass)
 
 
     def pipe(self,

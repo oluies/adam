@@ -22,7 +22,8 @@ import java.lang.{ Boolean => JBoolean }
 
 import grizzled.slf4j.Logging
 import htsjdk.samtools.ValidationStringency
-import org.apache.parquet.filter2.predicate.FilterApi
+import org.apache.avro.Schema
+import org.apache.parquet.filter2.predicate.{ FilterApi, FilterPredicate }
 import org.apache.parquet.filter2.predicate.Operators.BooleanColumn
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
@@ -485,99 +486,88 @@ class TransformAlignments(protected val args: TransformAlignmentsArgs) extends B
       inputPath.endsWith(".fasta")
   }
 
-  def run(sc: SparkContext) {
-    checkWriteablePath(args.outputPath, sc.hadoopConfiguration)
-
-    // throw exception if aligned read predicate or limit projection flags are used improperly
-    if (args.useAlignedReadPredicate && forceNonParquet()) {
-      throw new IllegalArgumentException(
-        "-aligned_read_predicate only applies to Parquet files, but a non-Parquet force load flag was passed"
-      )
-    }
-    if (args.limitProjection && forceNonParquet()) {
-      throw new IllegalArgumentException(
-        "-limit_projection only applies to Parquet files, but a non-Parquet force load flag was passed"
-      )
-    }
-    if (args.useAlignedReadPredicate && isNonParquet(args.inputPath)) {
-      throw new IllegalArgumentException(
-        "-aligned_read_predicate only applies to Parquet files, but a non-Parquet input path was specified"
-      )
-    }
-    if (args.limitProjection && isNonParquet(args.inputPath)) {
-      throw new IllegalArgumentException(
-        "-limit_projection only applies to Parquet files, but a non-Parquet input path was specified"
-      )
-    }
-    if (args.useAlignedReadPredicate && args.regionPredicate != null) {
-      throw new IllegalArgumentException(
-        "-aligned_read_predicate and -region_predicate are mutually exclusive"
-      )
-    }
-    if (Seq(args.sortByReadName, args.sortByReferencePosition, args.sortByReferencePositionAndIndex).count(b => b) > 1) {
-      throw new IllegalArgumentException(
+  /** Flag combinations that cannot be honored, each with the reason it is rejected. */
+  private def invalidFlagCombinations: Seq[(Boolean, String)] = {
+    val nonParquetInput = isNonParquet(args.inputPath)
+    Seq(
+      (args.useAlignedReadPredicate && forceNonParquet()) ->
+        "-aligned_read_predicate only applies to Parquet files, but a non-Parquet force load flag was passed",
+      (args.limitProjection && forceNonParquet()) ->
+        "-limit_projection only applies to Parquet files, but a non-Parquet force load flag was passed",
+      (args.useAlignedReadPredicate && nonParquetInput) ->
+        "-aligned_read_predicate only applies to Parquet files, but a non-Parquet input path was specified",
+      (args.limitProjection && nonParquetInput) ->
+        "-limit_projection only applies to Parquet files, but a non-Parquet input path was specified",
+      (args.useAlignedReadPredicate && args.regionPredicate != null) ->
+        "-aligned_read_predicate and -region_predicate are mutually exclusive",
+      (Seq(args.sortByReadName, args.sortByReferencePosition, args.sortByReferencePositionAndIndex).count(b => b) > 1) ->
         "only one of -sort_by_name, -sort_by_reference_position, and -sort_by_reference_position_and_index may be specified"
-      )
-    }
+    )
+  }
 
-    args.configureCramFormat(sc)
+  private def validateArgs(): Unit = {
+    invalidFlagCombinations.collectFirst { case (true, message) => message }
+      .foreach(message => throw new IllegalArgumentException(message))
+  }
 
-    val loadedDs: AlignmentDataset =
-      if (args.forceLoadBam) {
-        if (args.regionPredicate != null) {
-          val loci = ReferenceRegion.fromString(args.regionPredicate)
-          sc.loadIndexedBam(args.inputPath, loci)
-        } else {
-          sc.loadBam(args.inputPath)
-        }
-      } else if (args.forceLoadFastq) {
-        sc.loadFastq(args.inputPath, Option(args.pairedFastqFile), Option(args.fastqReadGroup), stringency)
-      } else if (args.forceLoadIFastq) {
-        sc.loadInterleavedFastq(args.inputPath)
-      } else if (args.forceLoadParquet ||
-        args.useAlignedReadPredicate ||
-        args.limitProjection) {
-        val pred = if (args.useAlignedReadPredicate) {
-          Some(FilterApi.eq[JBoolean, BooleanColumn](
-            FilterApi.booleanColumn("readMapped"), true))
-        } else if (args.regionPredicate != null) {
-          Some(ReferenceRegion.createPredicate(
-            ReferenceRegion.fromString(args.regionPredicate).toSeq: _*
-          ))
-        } else {
-          None
-        }
+  private def regionLoci: Option[Iterable[ReferenceRegion]] = {
+    Option(args.regionPredicate).map(ReferenceRegion.fromString)
+  }
 
-        val proj = if (args.limitProjection) {
-          Some(Filter(AlignmentField.attributes,
-            AlignmentField.originalQualityScores))
-        } else {
-          None
-        }
+  private def loadBam(sc: SparkContext): AlignmentDataset = {
+    regionLoci.fold(sc.loadBam(args.inputPath))(loci => sc.loadIndexedBam(args.inputPath, loci))
+  }
 
-        sc.loadParquetAlignments(args.inputPath,
-          optPredicate = pred,
-          optProjection = proj)
-      } else {
-        val loadedReads = sc.loadAlignments(
-          args.inputPath,
-          optPathName2 = Option(args.pairedFastqFile),
-          optReadGroup = Option(args.fastqReadGroup),
-          stringency = stringency
-        )
-
-        if (args.regionPredicate != null) {
-          val loci = ReferenceRegion.fromString(args.regionPredicate)
-          loadedReads.filterByOverlappingRegions(loci)
-        } else {
-          loadedReads
-        }
-      }
-
-    val aDs: AlignmentDataset = if (args.disableProcessingStep) {
-      loadedDs
+  private def parquetPredicate: Option[FilterPredicate] = {
+    if (args.useAlignedReadPredicate) {
+      Some(FilterApi.eq[JBoolean, BooleanColumn](FilterApi.booleanColumn("readMapped"), true))
     } else {
-      // add program info
+      regionLoci.map(loci => ReferenceRegion.createPredicate(loci.toSeq: _*))
+    }
+  }
+
+  private def parquetProjection: Option[Schema] = {
+    if (args.limitProjection) {
+      Some(Filter(AlignmentField.attributes, AlignmentField.originalQualityScores))
+    } else {
+      None
+    }
+  }
+
+  private def loadParquet(sc: SparkContext): AlignmentDataset = {
+    sc.loadParquetAlignments(args.inputPath, optPredicate = parquetPredicate, optProjection = parquetProjection)
+  }
+
+  private def loadAny(sc: SparkContext): AlignmentDataset = {
+    val loadedReads = sc.loadAlignments(
+      args.inputPath,
+      optPathName2 = Option(args.pairedFastqFile),
+      optReadGroup = Option(args.fastqReadGroup),
+      stringency = stringency
+    )
+    regionLoci.fold(loadedReads)(loci => loadedReads.filterByOverlappingRegions(loci))
+  }
+
+  /** Loads the input with the loader the force load flags and Parquet-only options call for. */
+  private def loadInput(sc: SparkContext): AlignmentDataset = {
+    if (args.forceLoadBam) {
+      loadBam(sc)
+    } else if (args.forceLoadFastq) {
+      sc.loadFastq(args.inputPath, Option(args.pairedFastqFile), Option(args.fastqReadGroup), stringency)
+    } else if (args.forceLoadIFastq) {
+      sc.loadInterleavedFastq(args.inputPath)
+    } else if (args.forceLoadParquet || args.useAlignedReadPredicate || args.limitProjection) {
+      loadParquet(sc)
+    } else {
+      loadAny(sc)
+    }
+  }
+
+  /** Records this run as a processing step, unless -disable_pg is set. */
+  private def withProcessingStep(ds: AlignmentDataset): AlignmentDataset = {
+    if (args.disableProcessingStep) {
+      ds
+    } else {
       val about = new About()
       val version = if (about.isSnapshot()) {
         "%s--%s".format(about.version(), about.commit())
@@ -591,51 +581,39 @@ class TransformAlignments(protected val args: TransformAlignmentsArgs) extends B
         .setVersion(version)
         .setCommandLine(args.command)
         .build
-      loadedDs.addProcessingStep(processingStep)
+      ds.addProcessingStep(processingStep)
     }
+  }
 
-    val rdd = aDs.rdd
-    val sd = aDs.references
-    val rgd = aDs.readGroups
-    val pgs = aDs.processingSteps
-
-    // Optionally load a second RDD and concatenate it with the first.
-    // Paired-FASTQ loading is avoided here because that wouldn't make sense
-    // given that it's already happening above.
-    val concatOpt =
-      Option(args.concatFilename).map(concatFilename =>
-        if (args.forceLoadBam) {
-          sc.loadBam(concatFilename)
-        } else if (args.forceLoadIFastq) {
-          sc.loadInterleavedFastq(concatFilename)
-        } else if (args.forceLoadParquet) {
-          sc.loadParquetAlignments(concatFilename)
-        } else {
-          sc.loadAlignments(
-            concatFilename,
-            optReadGroup = Option(args.fastqReadGroup)
-          )
-        })
-
-    // if we have a second rdd that we are merging in, process the merger here
-    val (mergedRdd, mergedSd, mergedRgd, mergedPgs) = concatOpt.fold((rdd, sd, rgd, pgs))(t => {
-      (rdd ++ t.rdd, sd ++ t.references, rgd ++ t.readGroups, pgs ++ t.processingSteps)
-    })
-
-    // make a new aligned read rdd, that merges the two RDDs together
-    val newDs = AlignmentDataset(mergedRdd, mergedSd, mergedRgd, mergedPgs)
-
-    // run our transformation
-    val outputDs = this.apply(newDs)
-
-    // if we are sorting by reference, we must strip the indices from the sequence dictionary
-    // and sort the sequence dictionary
-    val sdFinal = if (args.sortByReferencePosition) {
-      mergedSd.stripIndices.sorted
+  /**
+   * Loads the -concat file. Paired-FASTQ loading is not offered here: the
+   * primary input already handles it.
+   */
+  private def loadConcat(sc: SparkContext, concatFilename: String): AlignmentDataset = {
+    if (args.forceLoadBam) {
+      sc.loadBam(concatFilename)
+    } else if (args.forceLoadIFastq) {
+      sc.loadInterleavedFastq(concatFilename)
+    } else if (args.forceLoadParquet) {
+      sc.loadParquetAlignments(concatFilename)
     } else {
-      mergedSd
+      sc.loadAlignments(concatFilename, optReadGroup = Option(args.fastqReadGroup))
     }
+  }
 
+  /** Merges the -concat file, if any, into the input. */
+  private def maybeConcat(sc: SparkContext, ds: AlignmentDataset): AlignmentDataset = {
+    Option(args.concatFilename).fold(ds)(concatFilename => {
+      val other = loadConcat(sc, concatFilename)
+      AlignmentDataset(
+        ds.rdd ++ other.rdd,
+        ds.references ++ other.references,
+        ds.readGroups ++ other.readGroups,
+        ds.processingSteps ++ other.processingSteps)
+    })
+  }
+
+  private def saveOutput(outputDs: AlignmentDataset): Unit = {
     if (args.partitionByStartPos) {
       if (outputDs.references.isEmpty) {
         warn("This dataset is not aligned and therefore will not benefit from being saved as a partitioned dataset")
@@ -645,6 +623,18 @@ class TransformAlignments(protected val args: TransformAlignmentsArgs) extends B
       outputDs.save(args,
         isSorted = args.sortByReadName || args.sortByReferencePosition || args.sortByReferencePositionAndIndex)
     }
+  }
+
+  def run(sc: SparkContext) {
+    checkWriteablePath(args.outputPath, sc.hadoopConfiguration)
+    validateArgs()
+    args.configureCramFormat(sc)
+
+    val input = withProcessingStep(loadInput(sc))
+    val merged = maybeConcat(sc, input)
+    // rebuild the dataset so the transformation starts from a plain RDD-bound dataset
+    val newDs = AlignmentDataset(merged.rdd, merged.references, merged.readGroups, merged.processingSteps)
+    saveOutput(this.apply(newDs))
   }
 
   private def createKnownSnpsTable(sc: SparkContext): SnpTable = {

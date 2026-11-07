@@ -236,34 +236,12 @@ public abstract class FastqRecordReader extends RecordReader<Void, Text> {
                                               final CompressionCodec codec) throws IOException {
         Text buffer = new Text();
         long originalStart = start;
-        
-        LineReader reader;
-        if (codec == null) {
-            // Advance to the start of the first record that ends with /1
-            // We use a temporary LineReader to read lines until we find the
-            // position of the right one.  We then seek the file to that position.
-            stream.seek(start);
-            reader = new LineReader(stream);
-        } else {
-            // Unlike the codec == null case, we don't seek before creating the
-            // reader, SplittableCompressionCodec.createInputStream places the
-            // stream at the start of the first compression block after our
-            // split start
-            //
-            // as noted above, we need to be at pos 0 in the stream before
-            // calling this
-            reader = new LineReader(((SplittableCompressionCodec)codec).createInputStream(stream,
-                                                                                          null,
-                                                                                          start,
-                                                                                          end,
-                                                                                          SplittableCompressionCodec.READ_MODE.BYBLOCK));
-        }
-        
+        LineReader reader = firstRecordReader(stream, codec);
+
         int bytesRead = 0;
         do {
             bytesRead = reader.readLine(buffer, (int) Math.min(maxLineLength, end - start));
-            int bufferLength = buffer.getLength();
-            if (bytesRead > 0 && !checkBuffer(bufferLength, buffer)) {
+            if (isNotRecordStart(bytesRead, buffer)) {
                 start += bytesRead;
             } else {
 
@@ -284,7 +262,7 @@ public abstract class FastqRecordReader extends RecordReader<Void, Text> {
                 long trackForwardPosition = start + bytesRead;
                 
                 bytesRead = reader.readLine(buffer, (int) Math.min(maxLineLength, end - start));
-                if (buffer.getLength() > 0 && buffer.getBytes()[0] == '@') {
+                if (startsWith(buffer, '@')) {
                     start = trackForwardPosition;
                     break;
                 } else {
@@ -293,7 +271,7 @@ public abstract class FastqRecordReader extends RecordReader<Void, Text> {
 
                 bytesRead = reader.readLine(buffer, (int) Math.min(maxLineLength, end - start));
                 trackForwardPosition += bytesRead;
-                if (bytesRead > 0 && buffer.getLength() > 0 && buffer.getBytes()[0] == '+') {
+                if (bytesRead > 0 && startsWith(buffer, '+')) {
                     break; // all good!
                 } else {
                     start = trackForwardPosition;
@@ -305,6 +283,42 @@ public abstract class FastqRecordReader extends RecordReader<Void, Text> {
         start = originalStart;
         stream.seek(start);
         return (int)(pos - originalStart);
+    }
+
+    /**
+     * A reader positioned at the split start: seeked for an uncompressed
+     * stream, or at the first compression block after the split start.
+     *
+     * @param stream The stream to read. Must be at position 0 for a codec.
+     * @param codec The splittable codec, or null for an uncompressed stream.
+     */
+    private LineReader firstRecordReader(final FSDataInputStream stream,
+                                         final CompressionCodec codec) throws IOException {
+        if (codec == null) {
+            // Advance to the start of the first record that ends with /1
+            // We use a temporary LineReader to read lines until we find the
+            // position of the right one.  We then seek the file to that position.
+            stream.seek(start);
+            return new LineReader(stream);
+        }
+        // Unlike the codec == null case, we don't seek before creating the
+        // reader, SplittableCompressionCodec.createInputStream places the
+        // stream at the start of the first compression block after our
+        // split start
+        return new LineReader(((SplittableCompressionCodec)codec).createInputStream(stream,
+                                                                                    null,
+                                                                                    start,
+                                                                                    end,
+                                                                                    SplittableCompressionCodec.READ_MODE.BYBLOCK));
+    }
+
+    /** True when a line was read and it cannot begin a record. */
+    private boolean isNotRecordStart(final int bytesRead, final Text buffer) {
+        return bytesRead > 0 && !checkBuffer(buffer.getLength(), buffer);
+    }
+
+    private static boolean startsWith(final Text buffer, final char c) {
+        return buffer.getLength() > 0 && buffer.getBytes()[0] == c;
     }
 
     public final void initialize(final InputSplit split, final TaskAttemptContext context)
@@ -473,11 +487,7 @@ public abstract class FastqRecordReader extends RecordReader<Void, Text> {
         // that's why we have the lastReadWasZeroBytes flag around. we set this
         // to true on the first read that gets bytesRead <= 0, and clear it on
         // any read that reads more than 0 bytes.
-        if (isSplittable &&
-            isCompressed &&
-            !lastReadWasZeroBytes &&
-            bytesRead <= 0 &&
-            !eofOk) {
+        if (atEndOfCompressedSplit(bytesRead, eofOk)) {
 
             // we need to clear the reader state so we can continue reading
             ((ResettableCompressedSplitLineReader)lineReader).reset();
@@ -489,7 +499,7 @@ public abstract class FastqRecordReader extends RecordReader<Void, Text> {
 
             // recursively call to redo the read
             return appendLineInto(dest, eofOk);
-        } else if (bytesRead < 0 || (bytesRead == 0 && !eofOk)) {
+        } else if (isUnexpectedEof(bytesRead, eofOk)) {
             throw new EOFException();
         } else {
             lastReadWasZeroBytes = false;
@@ -497,12 +507,28 @@ public abstract class FastqRecordReader extends RecordReader<Void, Text> {
 
         dest.append(buf.getBytes(), 0, buf.getLength());
         dest.append(newline, 0, 1);
+        advancePosition(bytesRead);
+
+        return bytesRead;
+    }
+
+    /**
+     * True for the first empty read past the last compression block of a
+     * split compressed file, while a record still needs more lines.
+     */
+    private boolean atEndOfCompressedSplit(final int bytesRead, final boolean eofOk) {
+        return isSplittable && isCompressed && !lastReadWasZeroBytes && bytesRead <= 0 && !eofOk;
+    }
+
+    private static boolean isUnexpectedEof(final int bytesRead, final boolean eofOk) {
+        return bytesRead < 0 || (bytesRead == 0 && !eofOk);
+    }
+
+    private void advancePosition(final int bytesRead) throws IOException {
         if (isSplittable && isCompressed) {
             pos = ((SplitCompressionInputStream)inputStream).getPos();
         } else {
             pos += bytesRead;
         }
-
-        return bytesRead;
     }
 }

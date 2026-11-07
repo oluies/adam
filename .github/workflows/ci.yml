@@ -13,9 +13,14 @@ jobs:
       - uses: coursier/cache-action@v9
       # Mill fetches the JVM pinned by mill-jvm-version in build.mill
       - run: ./mill --ticker false __.compile
-      # tests run against scoverage-instrumented classes
+      # tests run against scoverage-instrumented classes, with the JaCoCo agent for Java
       - run: ./mill --ticker false __.test
-      - run: ./mill --ticker false scoverage.xmlReportAll
-      # CRAP scores for Scala methods (report only, no gate yet)
-      - run: ./mill --ticker false scripts/crap.scala --top 40
+      - run: ./mill --ticker false __.scoverage.xmlReport + jacoco.report
+      # Python unit tests that need no Spark
+      - run: python3 -m pip install --quiet pytest && python3 -m pytest -q scripts adam-python/bdgenomics/adam/converters_test.py
+      # CRAP scores (report only, no gate yet). crapper's Scala support is in
+      # unclebob/crapper#33; install from that branch until it is merged.
+      - uses: astral-sh/setup-uv@v10
+      - run: uv tool install git+https://github.com/oluies/crapper@feature/scala-strategy
+      - run: crapper --use-existing-coverage | head -60
       - run: ./mill --ticker false adam-assembly.assembly
