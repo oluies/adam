@@ -13,9 +13,38 @@ jobs:
       - uses: coursier/cache-action@v9
       # Mill fetches the JVM pinned by mill-jvm-version in build.mill
       - run: ./mill --ticker false __.compile
-      # tests run against scoverage-instrumented classes
+      # tests run against scoverage-instrumented classes, with the JaCoCo agent for Java
+      - run: ./mill --ticker false jacoco.reset
       - run: ./mill --ticker false __.test
-      - run: ./mill --ticker false scoverage.xmlReportAll
-      # CRAP scores for Scala methods (report only, no gate yet)
-      - run: ./mill --ticker false scripts/crap.scala --top 40
+      - run: ./mill --ticker false __.scoverage.xmlReport + jacoco.report
+      - uses: astral-sh/setup-uv@v10.3.3
+      # Python that runs without Spark: lint, format, types and unit tests.
+      # ruff and ty are pinned so a new release cannot fail an unrelated PR.
+      - name: Python checks
+        env:
+          PY: scripts/fastq-interleaver.py scripts/test_fastq_interleaver.py adam-python/setup.py adam-python/bdgenomics/adam/find_adam_home.py adam-python/bdgenomics/adam/converters.py adam-python/tests/converters_test.py
+        run: |
+          uvx ruff@0.17.4 check $PY
+          uvx ruff@0.17.4 format --check $PY
+          uv venv .pyenv && uv pip install --python .pyenv pytest setuptools
+          uvx ty@0.0.99 check --python .pyenv $PY
+          .pyenv/bin/python -m pytest -q scripts
+          .pyenv/bin/python -m pytest -q adam-python/tests
+      # CRAP scores (report only, no gate yet). crapper's Scala support is in
+      # unclebob/crapper#33; pinned to that PR's commit until it is merged.
+      - run: uv tool install git+https://github.com/oluies/crapper@61a91e9655bfde1751eac7fb290ea3b2ebb58067
+      - run: crapper --use-existing-coverage | head -60
       - run: ./mill --ticker false adam-assembly.assembly
+      # the Python API against PySpark 4.3 and the assembly jar; PySpark needs a JDK on PATH
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Python API tests
+        working-directory: adam-python
+        env:
+          UV_LOCKED: '1'
+        run: |
+          JAR=$(../bin/find-adam-assembly.sh)
+          export PYSPARK_SUBMIT_ARGS="--jars $JAR --driver-class-path $JAR pyspark-shell"
+          make test

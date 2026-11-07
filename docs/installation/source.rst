@@ -50,60 +50,28 @@ Building for Python
 -------------------
 
 ADAM can be installed using the Pip package manager, or from source.
-To build and test `ADAM's Python bindings <#python>`__, run:
+ADAM's Python bindings need Python 3.11 or later (as PySpark 4.3 does) and
+`uv <https://docs.astral.sh/uv/>`__, which installs the Python version pinned
+in ``adam-python/.python-version`` and manages the virtualenv. To build and
+test `ADAM's Python bindings <#python>`__, run:
 
 .. code:: bash
 
+    ./mill adam-assembly.assembly
     ./mill adam-python.develop
     ./mill adam-python.pytest
 
-These Mill commands invoke the ``adam-python`` Makefile, which builds a
-Python egg and runs tests. To build this module, we require either an active
-`Conda <https://conda.io/>`__ or
-`virtualenv <https://virtualenv.pypa.io/en/stable/>`__ environment.
-
-`To setup and activate a Conda
-environment <https://conda.io/docs/using/envs.html>`__ for Python 3.6, run:
+These Mill commands invoke the ``adam-python`` Makefile. ``develop`` creates
+``adam-python/.venv`` with PySpark and the test requirements, and zips the
+Python package for ``bin/pyadam``. The tests need the ADAM assembly jar on
+PySpark's classpath and a JDK (17 or later) on the ``PATH``:
 
 .. code:: bash
 
-    conda create -n adam python=3.6 anaconda
-    source activate adam
-
-
-`To setup and activate a virtualenv
-environment <https://virtualenv.pypa.io/en/stable/userguide/#usage>`__,
-run:
-
-.. code:: bash
-
-    virtualenv adam
-    . adam/bin/activate
-
-Additionally, to run tests, the PySpark dependencies must be on the
-Python module load path and the ADAM JARs must be built and provided to
-PySpark. This can be done with the following bash commands:
-
-.. code:: bash
-
-    # add pyspark to the python path
-    PY4J_ZIP="$(ls -1 "${SPARK_HOME}/python/lib" | grep py4j)"
-    export PYTHONPATH=${SPARK_HOME}/python:${SPARK_HOME}/python/lib/${PY4J_ZIP}:${PYTHONPATH}
-
-    # put adam jar on the pyspark path
     ASSEMBLY_JAR="$("${ADAM_HOME}/bin/find-adam-assembly.sh")"
     export PYSPARK_SUBMIT_ARGS="--jars ${ASSEMBLY_JAR} --driver-class-path ${ASSEMBLY_JAR} pyspark-shell"
 
-This assumes that the `ADAM JARs have already been
-built <#build-from-source>`__. Additionally, we require
-`pytest <https://docs.pytest.org/en/latest/>`__ to be installed. The
-adam-python makefile can install this dependency. Once you have an
-active virtualenv or Conda environment, run:
-
-.. code:: bash
-
-    cd adam-python
-    make prepare
+To build a wheel and source distribution, run ``uv build`` in ``adam-python``.
 
 Building for R
 --------------

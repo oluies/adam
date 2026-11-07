@@ -140,7 +140,7 @@ class AlignmentDatasetTest(SparkTestCase):
                                         CoverageDataset)
 
         assert(isinstance(readsAsCoverage, CoverageDataset))
-        self.assertEquals(readsAsCoverage.toDF().count(), 5)
+        self.assertEqual(readsAsCoverage.toDF().count(), 5)
 
 
     def test_to_coverage(self):

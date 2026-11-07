@@ -34,6 +34,7 @@ object Versions {
   val sparkMajor = "spark4"
   val jvm = "temurin:17"
   val scoverage = "2.5.2"
+  val jacoco = "0.8.16"
 }
 
 object Deps {
@@ -54,6 +55,9 @@ object Deps {
   val httpclient = mvn"org.apache.httpcomponents:httpclient:4.5.14"
   val parquetAvro = mvn"org.apache.parquet:parquet-avro:1.17.0"
   val scalaGuice = mvn"net.codingwell::scala-guice:7.0.0"
+
+  val jacocoAgent = mvn"org.jacoco:org.jacoco.agent:${Versions.jacoco};classifier=runtime"
+  val jacocoCli = mvn"org.jacoco:org.jacoco.cli:${Versions.jacoco};classifier=nodeps"
 
   val mockito = mvn"org.mockito:mockito-core:5.14.2"
   val scalatest = mvn"org.scalatest::scalatest:3.0.9"
@@ -93,7 +97,19 @@ trait AdamModule extends SbtModule with PublishModule with ScoverageModule {
       local ++ super.runClasspath().filterNot(local.contains)
     }
 
-    def forkArgs = Seq(
+    def jacocoAgent = Task { defaultResolver().classpath(Seq(Deps.jacocoAgent)).head }
+
+    /** This module's JaCoCo data. Runs append to it until ./mill jacoco.reset clears it. */
+    def jacocoExec: os.Path = jacoco.dataDir / s"${moduleSegments.render}.exec"
+
+    /** scoverage measures Scala; this JaCoCo agent measures the Java classes (see jacoco.report). */
+    def jacocoArgs = Task {
+      Seq(s"-javaagent:${jacocoAgent().path}=destfile=$jacocoExec,append=true,includes=org.bdgenomics.*")
+    }
+
+    def forkArgs = Task { jacocoArgs() ++ baseForkArgs }
+
+    private def baseForkArgs = Seq(
       "-Xmx2g",
       // expected test outputs use '.' as the decimal separator
       "-Duser.language=en",
@@ -137,6 +153,11 @@ object `adam-utils` extends AdamModule {
 object `adam-codegen` extends AdamModule {
   def mvnDeps = Seq(Deps.avro)
   def compileMvnDeps = Seq.empty[Dep]
+
+  object test extends AdamTests {
+    // generate from real bdg-formats records, as adam-core's build does
+    def mvnDeps = super.mvnDeps() ++ Seq(Deps.bdgFormats)
+  }
 }
 
 object `adam-core` extends AdamModule {
@@ -241,11 +262,34 @@ object `adam-assembly` extends AdamModule {
   def moduleDeps = Seq(`adam-cli`)
   def mainClass = Some("org.bdgenomics.adam.cli.ADAMMain")
 
-  /** Spark and Scala come from the cluster, so leave them out of the fat jar. */
+  /** Splits a resolved jar name into artifact and version: jackson-databind-2.21.2.jar -> (jackson-databind, 2.21.2). */
+  private def artifactAndVersion(jar: String): (String, String) = {
+    val name = jar.stripSuffix(".jar")
+    val versionStart = "-[0-9]".r.findFirstMatchIn(name).map(_.start).getOrElse(name.length)
+    (name.take(versionStart), name.drop(versionStart + 1))
+  }
+
+  /** Compares versions by their numeric parts: 2.21.2 > 2.20.0, 1.10 > 1.9. */
+  private def versionOrdering: Ordering[String] = Ordering.by[String, Seq[Int]](
+    _.split("[.-]").toSeq.map(part => "^[0-9]+".r.findFirstIn(part).fold(0)(_.toInt))
+  )(Ordering.Implicits.seqOrdering)
+
+  /** Artifact -> version on Spark's runtime classpath, Scala included. */
+  def sparkProvidedVersions = Task {
+    defaultResolver().classpath(Seq(Deps.sparkCore, Deps.sparkSql)).map(ref => artifactAndVersion(ref.path.last)).toMap
+  }
+
+  /**
+   * Leaves out of the fat jar every artifact the cluster provides at the same or
+   * a newer version, so a bundled older copy cannot shadow Spark's own (bin/pyadam
+   * and bin/adamR put the jar first on the driver classpath). An artifact ADAM
+   * needs newer than Spark ships stays in, matching what ADAM compiles against.
+   */
   def upstreamIvyAssemblyClasspath = Task {
+    val provided = sparkProvidedVersions()
     super.upstreamIvyAssemblyClasspath().filterNot { ref =>
-      val name = ref.path.last
-      name.startsWith("scala-library-") || name.startsWith("scala-reflect-")
+      val (artifact, version) = artifactAndVersion(ref.path.last)
+      provided.get(artifact).exists(sparkVersion => versionOrdering.gteq(sparkVersion, version))
     }
   }
 
@@ -304,9 +348,11 @@ object `adam-distribution` extends JavaModule with PublishModule {
   }
 }
 
-/** Python bindings; these wrap the Makefile and expect an active virtualenv. */
+/** Python bindings; these wrap the Makefile, where uv manages the Python version and virtualenv. */
 object `adam-python` extends Module {
   def develop() = Task.Command {
+    // the editable install bundles the assembly jar
+    `adam-assembly`.assembly()
     os.proc("make", "develop").call(cwd = moduleDir, stdout = os.Inherit)
   }
   def pytest() = Task.Command {
@@ -326,10 +372,51 @@ object `adam-r` extends Module {
 
 /**
  * Statement coverage across all modules. Tests run against scoverage-instrumented
- * classes, so run ./mill __.test first, then ./mill scoverage.xmlReportAll
- * (or htmlReportAll). scripts/crap.scala combines the XML with method complexity.
+ * classes: run ./mill __.test, then ./mill __.scoverage.xmlReport (per module, as
+ * crapper reads it) or ./mill scoverage.htmlReportAll. With ./mill jacoco.report for
+ * the Java classes, `crapper --use-existing-coverage` then scores every function.
  */
 object scoverage extends ScoverageReport {
   def scalaVersion = Versions.scala
   def scoverageVersion = Versions.scoverage
+}
+
+/**
+ * Java coverage. Tests run with the JaCoCo agent (see AdamTests.jacocoArgs), which appends to
+ * one data file per module. For coverage of a single run:
+ *   ./mill jacoco.reset && ./mill __.test && ./mill jacoco.report
+ * jacoco.report writes target/site/jacoco/jacoco.xml, where crapper reads Java coverage.
+ */
+object jacoco extends Module {
+  private def measured = Seq(`adam-utils`, `adam-codegen`, `adam-core`, `adam-apis`, `adam-cli`)
+
+  def dataDir: os.Path = BuildCtx.workspaceRoot / "out" / "jacoco-data"
+
+  /** Deletes the JaCoCo data of earlier test runs. */
+  def reset() = Task.Command {
+    BuildCtx.withFilesystemCheckerDisabled(os.remove.all(dataDir))
+  }
+
+  def report() = Task.Command {
+    // the tests load the scoverage builds of each module, so report on those class files
+    val classes = Task.sequence(measured.map(_.scoverage.compile))().map(_.classes.path)
+    val sources = Task.sequence(measured.map(_.allSources))().flatten.map(_.path).filter(os.exists)
+    val cli = `adam-core`.defaultResolver().classpath(Seq(Deps.jacocoCli)).map(_.path)
+    val xml = BuildCtx.workspaceRoot / "target" / "site" / "jacoco" / "jacoco.xml"
+    BuildCtx.withFilesystemCheckerDisabled {
+      val execs = if (os.exists(dataDir)) os.list(dataDir).filter(_.ext == "exec").map(_.toString) else Seq.empty
+      if (execs.isEmpty) sys.error("No JaCoCo data in " + dataDir + "; run ./mill __.test first.")
+      os.makeDir.all(xml / os.up)
+      mill.util.Jvm.callProcess(
+        mainClass = "org.jacoco.cli.internal.Main",
+        classPath = cli,
+        mainArgs = Seq("report") ++ execs ++ Seq("--xml", xml.toString) ++
+          classes.flatMap(c => Seq("--classfiles", c.toString)) ++
+          sources.flatMap(s => Seq("--sourcefiles", s.toString)),
+        javaHome = `adam-core`.javaHome().map(_.path),
+        stdout = os.Inherit
+      )
+    }
+    xml.toString
+  }
 }

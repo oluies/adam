@@ -124,7 +124,7 @@ class TransformFragments(protected val args: TransformFragmentsArgs) extends BDG
     }
     if (Seq(args.sortByReadName, args.sortByReferencePosition, args.sortByReferencePositionAndIndex).count(b => b) > 1) {
       throw new IllegalArgumentException(
-        "only one of -sort_by_name, -sort_by_reference_position, and -sort_by_reference_position_and_index may be specified"
+        "only one of -sort_by_read_name, -sort_by_reference_position, and -sort_by_reference_position_and_index may be specified"
       )
     }
     if (args.maxReadLength > 0) {

@@ -56,7 +56,7 @@ class CoverageDatasetTest(SparkTestCase):
         features = coverage.toFeatures()
 
         assert(isinstance(features, FeatureDataset))
-        self.assertEquals(features.toDF().count(), coverage.toDF().count())
+        self.assertEqual(features.toDF().count(), coverage.toDF().count())
 
     def test_aggregatedCoverage(self):
         testFile = self.resourceFile("small.sam")

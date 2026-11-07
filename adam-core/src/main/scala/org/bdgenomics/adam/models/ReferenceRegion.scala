@@ -56,8 +56,9 @@ trait OptionalReferenceOrdering[T <: ReferenceRegion] extends Ordering[Option[T]
               b: Option[T]): Int = (a, b) match {
     case (None, None)         => 0
     case (Some(pa), Some(pb)) => baseOrdering.compare(pa, pb)
+    // regions that are not provided sort last
     case (Some(pa), None)     => -1
-    case (None, Some(pb))     => -1
+    case (None, Some(pb))     => 1
   }
 }
 

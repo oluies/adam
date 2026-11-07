@@ -100,11 +100,15 @@ $ ./mill __.test                  # run all tests
 $ ./mill adam-assembly.assembly   # build the ADAM CLI überjar used by bin/adam-submit
 ```
 
-Tests run against [scoverage](https://github.com/scoverage)-instrumented classes. After
-`./mill __.test`, `./mill scoverage.htmlReportAll` writes a statement coverage report to
-`out/scoverage/htmlReportAll.dest`, and `./mill scripts/crap.scala` prints a
-[CRAP](https://testing.googleblog.com/2011/02/this-code-is-crap.html) score
-(complexity × untested-ness) for every Scala method, worst first.
+Tests run against [scoverage](https://github.com/scoverage)-instrumented classes, with the
+JaCoCo agent measuring the Java classes. JaCoCo data accumulates across runs; run
+`./mill jacoco.reset` first for the coverage of one run. After `./mill __.test`:
+
+- `./mill scoverage.htmlReportAll` writes a statement coverage report to `out/scoverage/htmlReportAll.dest`
+- `./mill jacoco.report` writes Java coverage to `target/site/jacoco/jacoco.xml`
+- [`crapper --use-existing-coverage`](https://github.com/unclebob/crapper) prints a
+  [CRAP](https://testing.googleblog.com/2011/02/this-code-is-crap.html) score
+  (complexity × untested-ness) for every Scala, Java and Python function, worst first
 
 ### Installing Spark
 

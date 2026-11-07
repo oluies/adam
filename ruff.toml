@@ -1,0 +1,14 @@
+# Ruff settings for the repository's Python (scripts/ and adam-python/).
+# A ruff.toml rather than [tool.ruff] in a root pyproject.toml: a root
+# pyproject.toml would make tools treat the whole repository as one Python
+# project.
+target-version = "py311"
+
+[lint]
+select = ["E", "F", "W", "I", "UP", "B", "TRY", "PL", "PT", "RUF"]
+# the formatter owns line length; messages on raise sites are fine here
+ignore = ["E501", "TRY003"]
+
+[lint.per-file-ignores]
+# adam-python's tests are unittest.TestCase classes; keep new ones consistent
+"adam-python/**" = ["PT009", "PT027"]

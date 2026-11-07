@@ -17,4 +17,4 @@ ADAM's documentation is hosted at [readthedocs](http://adam.readthedocs.io).
 
 ## Python Requirements
 
-ADAM depends on having PySpark installed.
+ADAM needs Python 3.11 or later and PySpark 4.3 or later (below 5), which pip installs with it.

@@ -68,4 +68,14 @@ class TransformFragmentsSuite extends ADAMFunSuite {
     assert(qualityScoreCounts(30) === 92899)
     assert(qualityScoreCounts(10) === 7101)
   }
+
+  sparkTest("reject more than one sort flag, naming the real flags") {
+    val ex = intercept[IllegalArgumentException] {
+      TransformFragments(Array(copyResource("unordered.sam"), tmpFile("sorted.sam"),
+        "-load_as_alignments", "-save_as_alignments",
+        "-sort_by_read_name", "-sort_by_reference_position")).run(sc)
+    }
+    assert(ex.getMessage.contains(
+      "only one of -sort_by_read_name, -sort_by_reference_position, and -sort_by_reference_position_and_index"))
+  }
 }

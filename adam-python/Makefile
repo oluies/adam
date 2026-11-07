@@ -18,24 +18,22 @@
 
 define help
 
-Supported targets: prepare, develop, sdist, clean, test, and pypi.
+Supported targets: prepare, develop, sdist, clean, test, and pypi. All use uv
+(https://docs.astral.sh/uv/), which manages the virtualenv and Python version.
 
-Please note that all build targets require a virtualenv to be active.
+The 'prepare' and 'develop' targets create .venv with an editable install of ADAM, its runtime
+requirements and its test requirements. 'develop' also zips the bdgenomics package into
+target/pyfiles/, for bin/pyadam to pass to PySpark with --py-files.
 
-The 'prepare' target installs ADAM's build requirements into the current virtualenv.
+The 'clean' target undoes the effect of 'develop' and removes build output.
 
-The 'develop' target creates an editable install of ADAM and its runtime requirements in the
-current virtualenv. The install is called 'editable' because changes to the source code
-immediately affect the virtualenv. This target also builds a .egg.
+The 'test' target runs ADAM's unit tests. They need the ADAM assembly jar on PySpark's
+classpath; see docs/installation/source.rst. Set the 'tests' variable to run a particular test, e.g.
 
-The 'clean' target undoes the effect of 'develop'.
+	make test tests=bdgenomics/adam/test/alignmentDataset_test.py::AlignmentDatasetTest::test_save_sorted_sam
 
-The 'test' target runs ADAM's unit tests. Set the 'tests' variable to run a particular test, e.g.
-
-	make test tests=bdgenomics/adam/test/sort/sortTest.py::SortTest::testSort
-
-The 'pypi' target publishes the current commit of ADAM to PyPI after enforcing that the working
-copy and the index are clean, and tagging it as an unstable .dev build.
+The 'pypi' target builds and publishes the current commit of ADAM to PyPI after enforcing that
+the working copy and the index are clean.
 
 endef
 export help
@@ -44,65 +42,49 @@ help:
 
 # This Makefile uses bash features like printf and <()
 SHELL=bash
-python=python
-pip=pip
-tests=bdgenomics
-extras=
-adam_version:=$(shell $(python) version.py)
-sdist_name:=adam-$(adam_version).tar.gz
-current_commit:=$(shell git log --pretty=oneline -n 1 -- $(pwd) | cut -f1 -d " ")
-dirty:=$(shell (git diff --exit-code && git diff --cached --exit-code) > /dev/null || printf -- --DIRTY)
+uv=uv
+# bdgenomics/adam/test needs PySpark and the ADAM jar; tests/ needs neither
+tests=bdgenomics tests
+adam_version:=$(shell python3 version.py)
+# outside dist/, which holds only what pypi publishes
+pyfiles_zip:=target/pyfiles/bdgenomics.adam-$(adam_version).zip
+package_sources:=$(shell find bdgenomics -name '*.py' -not -path '*/test/*')
 
 green=\033[0;32m
 normal=\033[0m\n
 red=\033[0;31m
 
 
-develop:
-	$(pip) install -e .$(extras)
-	$(python) setup.py bdist_egg
-clean_develop:
-	- $(pip) uninstall -y adam
-	- rm -rf bdgenomics/*.egg*
+prepare:
+	$(uv) sync
 
-sdist: dist/$(sdist_name)
-dist/$(sdist_name):
-	@test -f dist/$(sdist_name) && mv dist/$(sdist_name) dist/$(sdist_name).old || true
-	$(python) setup.py sdist
-	@test -f dist/$(sdist_name).old \
-	    && ( cmp -s <(tar -xOzf dist/$(sdist_name)) <(tar -xOzf dist/$(sdist_name).old) \
-	         && mv dist/$(sdist_name).old dist/$(sdist_name) \
-	         && printf "$(green)No significant changes to sdist, reinstating backup.$(normal)" \
-	         || rm dist/$(sdist_name).old ) \
-	    || true
+develop: prepare $(pyfiles_zip)
+$(pyfiles_zip): $(package_sources)
+	mkdir -p $(dir $@)
+	rm -f $@
+	printf '%s\n' $(package_sources) | zip -q -@ $@
+clean_develop:
+	- rm -rf .venv target/pyfiles
+
+sdist:
+	$(uv) build --sdist
 clean_sdist:
 	- rm -rf dist
 
 
-test: check_build_reqs
+test: prepare
 	mkdir -p target
-	$(python) -m pytest -vv --junitxml target/pytest-reports/tests.xml $(tests)
+	$(uv) run pytest -vv --junitxml target/pytest-reports/tests.xml $(tests)
 
 
 pypi: check_clean_working_copy
-	set -x \
-	&& $(python) setup.py egg_info sdist bdist_egg \
-	&& twine check dist/* \
-	&& twine upload dist/*
+	rm -rf dist
+	$(uv) build
+	$(uv) publish dist/*.whl dist/*.tar.gz
 clean_pypi:
-	- rm -rf build/
-	- rm -rf dist/
+	- rm -rf build/ dist/
 
 clean: clean_develop clean_pypi
-
-
-check_build_reqs:
-	@$(python) -c 'import pytest' \
-		|| ( printf "$(red)Build requirements are missing. Run 'make prepare' to install them.$(normal)" ; false )
-
-
-prepare:
-	$(pip) install pytest==3.9.1
 
 
 check_clean_working_copy:
@@ -123,5 +105,4 @@ check_clean_working_copy:
 		test \
 		pypi clean_pypi \
 		clean \
-		check_clean_working_copy \
-		check_build_reqs
+		check_clean_working_copy
