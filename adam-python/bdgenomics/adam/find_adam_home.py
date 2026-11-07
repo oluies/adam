@@ -28,40 +28,41 @@ import sys
 from importlib.util import find_spec
 
 
-def _find_adam_home():
-    """Find the ADAM_HOME."""
-    # If the enviroment has ADAM_HOME set trust it.
-    if "ADAM_HOME" in os.environ:
-        return os.environ["ADAM_HOME"]
+def _is_adam_home(path: str) -> bool:
+    """True if path looks like an ADAM_HOME: bin/adam-submit and the ADAM jar."""
+    return os.path.isfile(os.path.join(path, "bin/adam-submit")) and (
+        os.path.isdir(os.path.join(path, "jars"))
+        or os.path.isfile(os.path.join(path, "out/adam-assembly/assembly.dest/out.jar"))
+    )
 
-    def is_adam_home(path):
-        """Takes a path and returns true if the provided path could be a reasonable ADAM_HOME"""
-        return os.path.isfile(os.path.join(path, "bin/adam-submit")) and (
-            os.path.isdir(os.path.join(path, "jars"))
-            or os.path.isfile(
-                os.path.join(path, "out/adam-assembly/assembly.dest/out.jar")
-            )
-        )
 
-    paths = [os.path.join(os.path.dirname(os.path.realpath(__file__)), "..")]
+def _candidate_paths(module_file: str, package_origin: str | None) -> list[str]:
+    """Where ADAM_HOME may be: next to this module, and inside the installed bdgenomics package."""
+    paths = [os.path.join(os.path.dirname(os.path.realpath(module_file)), "..")]
+    if package_origin is not None:
+        paths.append(os.path.join(os.path.dirname(package_origin), "adam"))
+    return [os.path.abspath(p) for p in paths]
 
-    # Add the path of the ADAM module if it exists
+
+def _find_adam_home(environ: dict[str, str], candidates: list[str]) -> str | None:
+    """ADAM_HOME from the environment, else the first candidate that looks like one."""
+    if "ADAM_HOME" in environ:
+        return environ["ADAM_HOME"]
+    return next((path for path in candidates if _is_adam_home(path)), None)
+
+
+def main() -> None:
     spec = find_spec("bdgenomics")
-    if spec is not None and spec.origin is not None:
-        paths.append(os.path.join(os.path.dirname(spec.origin), "adam"))
-
-    # Normalize the paths
-    print(repr(paths), file=sys.stderr)
-    paths = [os.path.abspath(p) for p in paths]
-
-    try:
-        return next(path for path in paths if is_adam_home(path))
-    except StopIteration:
+    candidates = _candidate_paths(__file__, spec.origin if spec is not None else None)
+    adam_home = _find_adam_home(dict(os.environ), candidates)
+    if adam_home is None:
         print(
-            f"Could not find valid ADAM_HOME while searching {paths}", file=sys.stderr
+            f"Could not find valid ADAM_HOME while searching {candidates}",
+            file=sys.stderr,
         )
         sys.exit(1)
+    print(adam_home)
 
 
 if __name__ == "__main__":
-    print(_find_adam_home())
+    main()

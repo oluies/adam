@@ -75,24 +75,7 @@ class AlignmentConverter extends Serializable with Logging {
   def convert(samRecord: SAMRecord): Alignment = {
     try {
       val cigar: String = samRecord.getCigarString
-      val startTrim = if (cigar == "*") {
-        0
-      } else {
-        val count = cigar.takeWhile(_.isDigit).toInt
-        val operator = cigar.dropWhile(_.isDigit).head
-
-        if (operator == 'H') {
-          count
-        } else {
-          0
-        }
-      }
-      val endTrim = if (cigar.endsWith("H")) {
-        // must reverse string as takeWhile is not implemented in reverse direction
-        cigar.dropRight(1).reverse.takeWhile(_.isDigit).reverse.toInt
-      } else {
-        0
-      }
+      val (startTrim, endTrim) = hardClipTrims(cigar)
 
       val builder: Alignment.Builder = Alignment.newBuilder
         .setReadName(samRecord.getReadName)
@@ -111,30 +94,8 @@ class AlignmentConverter extends Serializable with Logging {
 
       // Only set the reference information if the read is aligned, matching the mate reference
       // This prevents looking up a -1 in the sequence dictionary
-      val readReference: Int = samRecord.getReferenceIndex
-      if (readReference != SAMRecord.NO_ALIGNMENT_REFERENCE_INDEX) {
-        builder.setReferenceName(samRecord.getReferenceName)
-
-        // set read alignment flag
-        val start: Int = samRecord.getAlignmentStart
-        assert(start != 0, "Start cannot equal 0 if reference is set.")
-        builder.setStart(start - 1L)
-
-        // set OP and OC flags, if applicable
-        if (samRecord.getAttribute("OP") != null) {
-          builder.setOriginalStart(samRecord.getIntegerAttribute("OP").toLong - 1)
-          builder.setOriginalCigar(samRecord.getStringAttribute("OC"))
-        }
-
-        val end = start.toLong - 1 + samRecord.getCigar.getReferenceLength
-        builder.setEnd(end)
-        // set mapping quality
-        val mapq: Int = samRecord.getMappingQuality
-
-        if (mapq != SAMRecord.UNKNOWN_MAPPING_QUALITY) {
-          builder.setMappingQuality(mapq)
-        }
-
+      if (samRecord.getReferenceIndex != SAMRecord.NO_ALIGNMENT_REFERENCE_INDEX) {
+        setAlignment(builder, samRecord)
       }
 
       // set mapping flags
@@ -154,72 +115,9 @@ class AlignmentConverter extends Serializable with Logging {
       builder.setPrimaryAlignment(!samRecord.getNotPrimaryAlignmentFlag)
       builder.setSupplementaryAlignment(samRecord.getSupplementaryAlignmentFlag)
 
-      // Position of the mate/next segment
-      val mateReference: Int = samRecord.getMateReferenceIndex
-
-      if (mateReference != SAMRecord.NO_ALIGNMENT_REFERENCE_INDEX) {
-        builder.setMateReferenceName(samRecord.getMateReferenceName)
-
-        val mateStart = samRecord.getMateAlignmentStart
-        if (mateStart > 0) {
-          // We subtract one here to be 0-based offset
-          builder.setMateAlignmentStart(mateStart - 1L)
-        }
-      }
-
-      // The Avro scheme defines all flags as defaulting to 'false'. We only
-      // need to set the flags that are true.
-      if (samRecord.getFlags != 0) {
-        if (samRecord.getReadPairedFlag) {
-          builder.setReadPaired(true)
-          if (samRecord.getMateNegativeStrandFlag) {
-            builder.setMateNegativeStrand(true)
-          }
-          if (!samRecord.getMateUnmappedFlag) {
-            builder.setMateMapped(true)
-          }
-          if (samRecord.getProperPairFlag) {
-            builder.setProperPair(true)
-          }
-          if (samRecord.getFirstOfPairFlag) {
-            builder.setReadInFragment(0)
-          }
-          if (samRecord.getSecondOfPairFlag) {
-            builder.setReadInFragment(1)
-          }
-        }
-        if (samRecord.getDuplicateReadFlag) {
-          builder.setDuplicateRead(true)
-        }
-        if (samRecord.getReadFailsVendorQualityCheckFlag) {
-          builder.setFailedVendorQualityChecks(true)
-        }
-      }
-
-      var tags = List[Attribute]()
-      val tlen = samRecord.getInferredInsertSize
-      if (tlen != 0) {
-        builder.setInsertSize(tlen.toLong)
-      }
-      if (samRecord.getAttributes != null) {
-        samRecord.getAttributes.asScala.foreach {
-          attr =>
-            if (attr.tag == "MD") {
-              builder.setMismatchingPositions(attr.value.toString)
-            } else if (!skipTag(attr.tag)) {
-              tags ::= AttributeUtils.convertSAMTagAndValue(attr)
-            }
-        }
-      }
-      if (tags.nonEmpty) {
-        builder.setAttributes(tags.mkString("\t"))
-      }
-
-      val recordGroup: SAMReadGroupRecord = samRecord.getReadGroup
-      if (recordGroup != null) {
-        builder.setReadGroupId(recordGroup.getReadGroupId)
-          .setReadGroupSampleId(recordGroup.getSample)
-      }
+      setMate(builder, samRecord)
+      setFlags(builder, samRecord)
+      setTagsAndReadGroup(builder, samRecord)
 
       builder.build
     } catch {
@@ -227,6 +125,127 @@ class AlignmentConverter extends Serializable with Logging {
         error("Conversion of read: " + samRecord + " failed.")
         throw t
       }
+    }
+  }
+
+  /** Bases hard clipped from the start and the end of the read, from its CIGAR. */
+  private def hardClipTrims(cigar: String): (Int, Int) = {
+    val startTrim = if (cigar == "*") {
+      0
+    } else {
+      val count = cigar.takeWhile(_.isDigit).toInt
+      val operator = cigar.dropWhile(_.isDigit).head
+      if (operator == 'H') count else 0
+    }
+    val endTrim = if (cigar.endsWith("H")) {
+      // must reverse string as takeWhile is not implemented in reverse direction
+      cigar.dropRight(1).reverse.takeWhile(_.isDigit).reverse.toInt
+    } else {
+      0
+    }
+    (startTrim, endTrim)
+  }
+
+  /** Reference, positions, original alignment and mapping quality of an aligned read. */
+  private def setAlignment(builder: Alignment.Builder, samRecord: SAMRecord): Unit = {
+    builder.setReferenceName(samRecord.getReferenceName)
+
+    // set read alignment flag
+    val start: Int = samRecord.getAlignmentStart
+    assert(start != 0, "Start cannot equal 0 if reference is set.")
+    builder.setStart(start - 1L)
+
+    // set OP and OC flags, if applicable
+    if (samRecord.getAttribute("OP") != null) {
+      builder.setOriginalStart(samRecord.getIntegerAttribute("OP").toLong - 1)
+      builder.setOriginalCigar(samRecord.getStringAttribute("OC"))
+    }
+
+    val end = start.toLong - 1 + samRecord.getCigar.getReferenceLength
+    builder.setEnd(end)
+
+    val mapq: Int = samRecord.getMappingQuality
+    if (mapq != SAMRecord.UNKNOWN_MAPPING_QUALITY) {
+      builder.setMappingQuality(mapq)
+    }
+  }
+
+  /** Reference and position of the mate/next segment. */
+  private def setMate(builder: Alignment.Builder, samRecord: SAMRecord): Unit = {
+    if (samRecord.getMateReferenceIndex != SAMRecord.NO_ALIGNMENT_REFERENCE_INDEX) {
+      builder.setMateReferenceName(samRecord.getMateReferenceName)
+
+      val mateStart = samRecord.getMateAlignmentStart
+      if (mateStart > 0) {
+        // We subtract one here to be 0-based offset
+        builder.setMateAlignmentStart(mateStart - 1L)
+      }
+    }
+  }
+
+  /**
+   * The flags that are set. The Avro scheme defines all flags as defaulting
+   * to 'false', so only the true ones are set.
+   */
+  private def setFlags(builder: Alignment.Builder, samRecord: SAMRecord): Unit = {
+    if (samRecord.getFlags != 0) {
+      if (samRecord.getReadPairedFlag) {
+        setPairFlags(builder, samRecord)
+      }
+      if (samRecord.getDuplicateReadFlag) {
+        builder.setDuplicateRead(true)
+      }
+      if (samRecord.getReadFailsVendorQualityCheckFlag) {
+        builder.setFailedVendorQualityChecks(true)
+      }
+    }
+  }
+
+  private def setPairFlags(builder: Alignment.Builder, samRecord: SAMRecord): Unit = {
+    builder.setReadPaired(true)
+    if (samRecord.getMateNegativeStrandFlag) {
+      builder.setMateNegativeStrand(true)
+    }
+    if (!samRecord.getMateUnmappedFlag) {
+      builder.setMateMapped(true)
+    }
+    if (samRecord.getProperPairFlag) {
+      builder.setProperPair(true)
+    }
+    if (samRecord.getFirstOfPairFlag) {
+      builder.setReadInFragment(0)
+    }
+    if (samRecord.getSecondOfPairFlag) {
+      builder.setReadInFragment(1)
+    }
+  }
+
+  /** Insert size, MD tag, other tags (except the ones ADAM stores as fields) and read group. */
+  private def setTagsAndReadGroup(builder: Alignment.Builder, samRecord: SAMRecord): Unit = {
+    val tlen = samRecord.getInferredInsertSize
+    if (tlen != 0) {
+      builder.setInsertSize(tlen.toLong)
+    }
+
+    var tags = List[Attribute]()
+    if (samRecord.getAttributes != null) {
+      samRecord.getAttributes.asScala.foreach {
+        attr =>
+          if (attr.tag == "MD") {
+            builder.setMismatchingPositions(attr.value.toString)
+          } else if (!skipTag(attr.tag)) {
+            tags ::= AttributeUtils.convertSAMTagAndValue(attr)
+          }
+      }
+    }
+    if (tags.nonEmpty) {
+      builder.setAttributes(tags.mkString("\t"))
+    }
+
+    val recordGroup: SAMReadGroupRecord = samRecord.getReadGroup
+    if (recordGroup != null) {
+      builder.setReadGroupId(recordGroup.getReadGroupId)
+        .setReadGroupSampleId(recordGroup.getSample)
     }
   }
 
@@ -448,12 +467,22 @@ class AlignmentConverter extends Serializable with Logging {
     // set canonically necessary fields
     builder.setReadName(adamRecord.getReadName)
     builder.setReadString(adamRecord.getSequence)
-    adamRecord.getQualityScores match {
-      case null      => builder.setBaseQualityString("*")
-      case s: String => builder.setBaseQualityString(s)
-    }
+    builder.setBaseQualityString(Option(adamRecord.getQualityScores).getOrElse("*"))
 
-    // set read group flags
+    setReadGroup(builder, adamRecord, rgd)
+    setMate(builder, adamRecord)
+    setPairFlags(builder, adamRecord)
+    Option(adamRecord.getDuplicateRead)
+      .foreach(v => builder.setDuplicateReadFlag(v.booleanValue))
+    setMapping(builder, adamRecord)
+    setOriginalsAndTags(builder, adamRecord)
+
+    // return sam record
+    builder
+  }
+
+  /** The read group, and its library and platform unit. */
+  private def setReadGroup(builder: SAMRecord, adamRecord: Alignment, rgd: ReadGroupDictionary): Unit = {
     Option(adamRecord.getReadGroupId)
       .foreach(v => {
         builder.setAttribute("RG", v)
@@ -461,22 +490,22 @@ class AlignmentConverter extends Serializable with Logging {
         rg.library.foreach(v => builder.setAttribute("LB", v))
         rg.platformUnit.foreach(v => builder.setAttribute("PU", v))
       })
+  }
 
-    // set the reference name, and alignment position, for mate
+  /** The mate's reference and alignment position, and the template length. */
+  private def setMate(builder: SAMRecord, adamRecord: Alignment): Unit = {
     Option(adamRecord.getMateReferenceName)
       .foreach(builder.setMateReferenceName)
     Option(adamRecord.getMateAlignmentStart)
       .foreach(s => builder.setMateAlignmentStart(s.toInt + 1))
-
-    // set template length
     Option(adamRecord.getInsertSize)
       .foreach(s => builder.setInferredInsertSize(s.toInt))
+  }
 
-    // set flags
+  /** The paired flag and, for paired reads only, the mate and pair flags. */
+  private def setPairFlags(builder: SAMRecord, adamRecord: Alignment): Unit = {
     Option(adamRecord.getReadPaired).foreach(p => {
       builder.setReadPairedFlag(p.booleanValue)
-
-      // only set flags if read is paired
       if (p) {
         Option(adamRecord.getMateNegativeStrand)
           .foreach(v => builder.setMateNegativeStrandFlag(v.booleanValue))
@@ -484,14 +513,14 @@ class AlignmentConverter extends Serializable with Logging {
           .foreach(v => builder.setMateUnmappedFlag(!v.booleanValue))
         Option(adamRecord.getProperPair)
           .foreach(v => builder.setProperPairFlag(v.booleanValue))
-        Option(adamRecord.getReadInFragment == 0)
-          .foreach(v => builder.setFirstOfPairFlag(v.booleanValue))
-        Option(adamRecord.getReadInFragment == 1)
-          .foreach(v => builder.setSecondOfPairFlag(v.booleanValue))
+        builder.setFirstOfPairFlag(adamRecord.getReadInFragment == 0)
+        builder.setSecondOfPairFlag(adamRecord.getReadInFragment == 1)
       }
     })
-    Option(adamRecord.getDuplicateRead)
-      .foreach(v => builder.setDuplicateReadFlag(v.booleanValue))
+  }
+
+  /** The mapped flag, strand and, for mapped reads only, the alignment fields. */
+  private def setMapping(builder: SAMRecord, adamRecord: Alignment): Unit = {
     Option(adamRecord.getReadMapped)
       .foreach(m => {
         builder.setReadUnmappedFlag(!m.booleanValue)
@@ -500,31 +529,35 @@ class AlignmentConverter extends Serializable with Logging {
         Option(adamRecord.getReadNegativeStrand)
           .foreach(v => builder.setReadNegativeStrandFlag(v.booleanValue))
 
-        // only set alignment flags if read is aligned
         if (m) {
-          // if we are aligned, we must have a reference
-          require(adamRecord.getReferenceName != null, "Cannot have null reference if aligned.")
-          builder.setReferenceName(adamRecord.getReferenceName)
-
-          // set the cigar, if provided
-          Option(adamRecord.getCigar).foreach(builder.setCigarString)
-          // set the old cigar, if provided
-          Option(adamRecord.getOriginalCigar).foreach(v => builder.setAttribute("OC", v))
-          // set mapping flags
-          Option(adamRecord.getPrimaryAlignment)
-            .foreach(v => builder.setNotPrimaryAlignmentFlag(!v.booleanValue))
-          Option(adamRecord.getSupplementaryAlignment)
-            .foreach(v => builder.setSupplementaryAlignmentFlag(v.booleanValue))
-          Option(adamRecord.getStart)
-            .foreach(s => builder.setAlignmentStart(s.toInt + 1))
-          Option(adamRecord.getOriginalStart)
-            .foreach(s => builder.setAttribute("OP", s.toInt + 1))
-          Option(adamRecord.getMappingQuality).foreach(v => builder.setMappingQuality(v))
+          setAlignment(builder, adamRecord)
         } else {
           // mapping quality must be 0 if read is unmapped
           builder.setMappingQuality(0)
         }
       })
+  }
+
+  private def setAlignment(builder: SAMRecord, adamRecord: Alignment): Unit = {
+    // if we are aligned, we must have a reference
+    require(adamRecord.getReferenceName != null, "Cannot have null reference if aligned.")
+    builder.setReferenceName(adamRecord.getReferenceName)
+
+    Option(adamRecord.getCigar).foreach(builder.setCigarString)
+    Option(adamRecord.getOriginalCigar).foreach(v => builder.setAttribute("OC", v))
+    Option(adamRecord.getPrimaryAlignment)
+      .foreach(v => builder.setNotPrimaryAlignmentFlag(!v.booleanValue))
+    Option(adamRecord.getSupplementaryAlignment)
+      .foreach(v => builder.setSupplementaryAlignmentFlag(v.booleanValue))
+    Option(adamRecord.getStart)
+      .foreach(s => builder.setAlignmentStart(s.toInt + 1))
+    Option(adamRecord.getOriginalStart)
+      .foreach(s => builder.setAttribute("OP", s.toInt + 1))
+    Option(adamRecord.getMappingQuality).foreach(v => builder.setMappingQuality(v))
+  }
+
+  /** QC failure, MD tag, original qualities, cigar and start, and all other tags. */
+  private def setOriginalsAndTags(builder: SAMRecord, adamRecord: Alignment): Unit = {
     Option(adamRecord.getFailedVendorQualityChecks)
       .foreach(v => builder.setReadFailsVendorQualityCheckFlag(v.booleanValue))
     Option(adamRecord.getMismatchingPositions)
@@ -537,16 +570,9 @@ class AlignmentConverter extends Serializable with Logging {
     Option(adamRecord.getOriginalStart)
       .foreach(i => builder.setAttribute("OP", i + 1))
 
-    // add all other tags
     if (adamRecord.getAttributes != null) {
-      val mp = RichAlignment(adamRecord).tags
-      mp.foreach(a => {
-        builder.setAttribute(a.tag, a.value)
-      })
+      RichAlignment(adamRecord).tags.foreach(a => builder.setAttribute(a.tag, a.value))
     }
-
-    // return sam record
-    builder
   }
 
   /**

@@ -17,7 +17,7 @@
  */
 package org.bdgenomics.adam.models
 
-import htsjdk.samtools.{ Cigar, CigarOperator }
+import htsjdk.samtools.{ Cigar, CigarElement, CigarOperator }
 import org.bdgenomics.adam.rich.RichAlignment._
 import org.bdgenomics.adam.rich.RichAlignment
 import scala.jdk.CollectionConverters._
@@ -63,122 +63,143 @@ object MdTag {
     mdTagInput: String,
     referenceStart: Long,
     cigar: Cigar): MdTag = {
-
-    var matches = List[NumericRange[Long]]()
-    var mismatches = Map[Long, Char]()
-    var deletions = Map[Long, Char]()
-
-    val numCigarOperators = cigar.numCigarElements()
-    var cigarIdx = 0
-    var mdTagStringOffset = 0
-    var referencePos = referenceStart
-    var cigarOperatorIndex = 0
-    var usedMatchingBases = 0
-
     if (mdTagInput == null || mdTagInput == "0") {
       new MdTag(referenceStart, List(), Map(), Map())
     } else {
-      val mdTag = mdTagInput.toUpperCase
+      new MdTagParser(mdTagInput, referenceStart, cigar).parse()
+    }
+  }
+
+  /**
+   * Walks the CIGAR operators and the MD tag together, collecting the matching
+   * ranges, mismatched bases and deleted bases by reference position.
+   */
+  private class MdTagParser(mdTagInput: String, referenceStart: Long, cigar: Cigar) {
+    private val mdTag = mdTagInput.toUpperCase
+    private var matches = List[NumericRange[Long]]()
+    private var mismatches = Map[Long, Char]()
+    private var deletions = Map[Long, Char]()
+
+    private var cigarIdx = 0
+    private var mdTagStringOffset = 0
+    private var referencePos = referenceStart
+    private var cigarOperatorIndex = 0
+    private var usedMatchingBases = 0
+
+    def parse(): MdTag = {
       // Parse all CIGAR operators until the end of the mdTag string
-      while (cigarIdx < numCigarOperators && mdTagStringOffset < mdTagInput.length) {
-        val cigarElement = cigar.getCigarElement(cigarIdx)
-        val nextDigit = digitPattern.findPrefixOf(mdTag.substring(mdTagStringOffset))
-        (cigarElement.getOperator, nextDigit) match {
-
-          case (_, None) if mdTagStringOffset == 0 =>
-            throw new IllegalArgumentException(s"MdTag $mdTagInput does not start with a digit")
-
-          case (_, Some(matchingBases)) if matchingBases.toInt == 0 =>
-            mdTagStringOffset += 1
-
-          case (CigarOperator.M | CigarOperator.EQ, Some(matchingBases)) =>
-            val numMatchingBases = math.min(cigarElement.getLength - cigarOperatorIndex, matchingBases.toInt - usedMatchingBases)
-
-            if (numMatchingBases > 0) {
-              matches ::= NumericRange(referencePos, referencePos + numMatchingBases, 1L)
-
-              // Move the reference position the length of the matching sequence
-              referencePos += numMatchingBases
-
-              // Move ahead in the current CIGAR operator
-              cigarOperatorIndex += numMatchingBases
-
-              // Move ahead in the current MdTag digit
-              usedMatchingBases += numMatchingBases
-            }
-
-            if (matchingBases.toInt == usedMatchingBases) {
-              mdTagStringOffset += matchingBases.length
-              usedMatchingBases = 0
-            }
-
-            // If the M operator has been fully read move on to the next operator
-            if (cigarOperatorIndex == cigarElement.getLength) {
-              cigarIdx += 1
-              cigarOperatorIndex = 0
-            }
-
-          case (CigarOperator.M | CigarOperator.X, None) =>
-            basesPattern.findPrefixOf(mdTag.substring(mdTagStringOffset)) match {
-              // Must have found a base or digit pattern in CigarOperator M
-              case None =>
-                throw new IllegalArgumentException(
-                  s"No match or mismatched bases found for ${cigar.toString} in MDTag $mdTag"
-                )
-              case Some(mismatchedBases) =>
-                mismatchedBases.foreach {
-                  base =>
-                    mismatches += (referencePos -> base)
-                    referencePos += 1
-                }
-                mdTagStringOffset += mismatchedBases.length
-                cigarOperatorIndex += mismatchedBases.length
-            }
-            // If the M operator has been fully read move on to the next operator
-            if (cigarOperatorIndex == cigarElement.getLength) {
-              cigarIdx += 1
-              cigarOperatorIndex = 0
-            }
-
-          case (CigarOperator.DELETION, None) =>
-            mdTag.charAt(mdTagStringOffset) match {
-              case '^' =>
-                // Skip ahead of the deletion '^' character
-                mdTagStringOffset += 1
-                basesPattern.findPrefixOf(mdTag.substring(mdTagStringOffset)) match {
-                  case None =>
-                    throw new IllegalArgumentException(s"No deleted bases found ${cigar.toString} in MDTag $mdTag")
-                  case Some(deletedBases) if deletedBases.length == cigarElement.getLength =>
-                    deletedBases.foreach {
-                      base =>
-                        deletions += (referencePos -> base)
-                        referencePos += 1
-                    }
-                    mdTagStringOffset += deletedBases.length
-                  case Some(deletedBases) =>
-                    throw new IllegalArgumentException(
-                      s"Element ${cigarElement.getLength}${cigarElement.getOperator.toString} in cigar ${cigar.toString} contradicts number of bases listed in MDTag: ^${deletedBases}"
-                    )
-                }
-                cigarIdx += 1
-                cigarOperatorIndex = 0
-
-              case _ =>
-                throw new IllegalArgumentException(
-                  s"CIGAR ${cigar.toString} indicates deletion found but no deleted bases in MDTag $mdTagInput"
-                )
-            }
-
-          case (CigarOperator.N, _) =>
-            referencePos += cigarElement.getLength
-            cigarIdx += 1
-            cigarOperatorIndex = 0
-
-          case (CigarOperator.INSERTION | CigarOperator.H | CigarOperator.S | CigarOperator.P, _) =>
-            cigarIdx += 1
-        }
+      while (cigarIdx < cigar.numCigarElements() && mdTagStringOffset < mdTagInput.length) {
+        step(cigar.getCigarElement(cigarIdx))
       }
       new MdTag(referenceStart, matches, mismatches, deletions)
+    }
+
+    private def step(cigarElement: CigarElement): Unit = {
+      digitPattern.findPrefixOf(mdTag.substring(mdTagStringOffset)) match {
+        case None if mdTagStringOffset == 0 =>
+          throw new IllegalArgumentException(s"MdTag $mdTagInput does not start with a digit")
+        case Some(matchingBases) if matchingBases.toInt == 0 =>
+          mdTagStringOffset += 1
+        case nextDigit =>
+          dispatch(cigarElement, nextDigit)
+      }
+    }
+
+    private def dispatch(cigarElement: CigarElement, nextDigit: Option[String]): Unit = {
+      (cigarElement.getOperator, nextDigit) match {
+        case (CigarOperator.M | CigarOperator.EQ, Some(matchingBases)) =>
+          onMatchingBases(cigarElement, matchingBases)
+        case (CigarOperator.M | CigarOperator.X, None) =>
+          onMismatchedBases(cigarElement)
+        case (CigarOperator.DELETION, None) =>
+          onDeletion(cigarElement)
+        case (CigarOperator.N, _) =>
+          referencePos += cigarElement.getLength
+          nextCigarOperator()
+        case (CigarOperator.INSERTION | CigarOperator.H | CigarOperator.S | CigarOperator.P, _) =>
+          cigarIdx += 1
+      }
+    }
+
+    private def onMatchingBases(cigarElement: CigarElement, matchingBases: String): Unit = {
+      val numMatchingBases = math.min(cigarElement.getLength - cigarOperatorIndex, matchingBases.toInt - usedMatchingBases)
+
+      if (numMatchingBases > 0) {
+        matches ::= NumericRange(referencePos, referencePos + numMatchingBases, 1L)
+
+        // Move the reference position the length of the matching sequence
+        referencePos += numMatchingBases
+
+        // Move ahead in the current CIGAR operator
+        cigarOperatorIndex += numMatchingBases
+
+        // Move ahead in the current MdTag digit
+        usedMatchingBases += numMatchingBases
+      }
+
+      if (matchingBases.toInt == usedMatchingBases) {
+        mdTagStringOffset += matchingBases.length
+        usedMatchingBases = 0
+      }
+
+      nextCigarOperatorIfRead(cigarElement)
+    }
+
+    private def onMismatchedBases(cigarElement: CigarElement): Unit = {
+      basesPattern.findPrefixOf(mdTag.substring(mdTagStringOffset)) match {
+        // Must have found a base or digit pattern in CigarOperator M
+        case None =>
+          throw new IllegalArgumentException(
+            s"No match or mismatched bases found for ${cigar.toString} in MDTag $mdTag"
+          )
+        case Some(mismatchedBases) =>
+          mismatchedBases.foreach {
+            base =>
+              mismatches += (referencePos -> base)
+              referencePos += 1
+          }
+          mdTagStringOffset += mismatchedBases.length
+          cigarOperatorIndex += mismatchedBases.length
+      }
+      nextCigarOperatorIfRead(cigarElement)
+    }
+
+    private def onDeletion(cigarElement: CigarElement): Unit = {
+      if (mdTag.charAt(mdTagStringOffset) != '^') {
+        throw new IllegalArgumentException(
+          s"CIGAR ${cigar.toString} indicates deletion found but no deleted bases in MDTag $mdTagInput"
+        )
+      }
+      // Skip ahead of the deletion '^' character
+      mdTagStringOffset += 1
+      basesPattern.findPrefixOf(mdTag.substring(mdTagStringOffset)) match {
+        case None =>
+          throw new IllegalArgumentException(s"No deleted bases found ${cigar.toString} in MDTag $mdTag")
+        case Some(deletedBases) if deletedBases.length == cigarElement.getLength =>
+          deletedBases.foreach {
+            base =>
+              deletions += (referencePos -> base)
+              referencePos += 1
+          }
+          mdTagStringOffset += deletedBases.length
+        case Some(deletedBases) =>
+          throw new IllegalArgumentException(
+            s"Element ${cigarElement.getLength}${cigarElement.getOperator.toString} in cigar ${cigar.toString} contradicts number of bases listed in MDTag: ^${deletedBases}"
+          )
+      }
+      nextCigarOperator()
+    }
+
+    /** Moves on to the next CIGAR operator once the current one has been fully read. */
+    private def nextCigarOperatorIfRead(cigarElement: CigarElement): Unit = {
+      if (cigarOperatorIndex == cigarElement.getLength) {
+        nextCigarOperator()
+      }
+    }
+
+    private def nextCigarOperator(): Unit = {
+      cigarIdx += 1
+      cigarOperatorIndex = 0
     }
   }
 
@@ -300,54 +321,63 @@ object MdTag {
    * @return Returns a populated MD tag.
    */
   def apply(read: String, reference: String, cigar: Cigar, start: Long): MdTag = {
-    var matchCount = 0
-    var delCount = 0
-    var string = ""
-    var readPos = 0
-    var refPos = 0
+    val writer = new MdStringWriter(read, reference)
+    cigar.getCigarElements.asScala.foreach(writer.add)
+    MdTag(writer.result, start, cigar)
+  }
 
-    // loop over all cigar elements
-    cigar.getCigarElements.asScala.foreach(cigarElement => {
+  /** Writes an MD tag string by walking a read and its reference along a CIGAR. */
+  private class MdStringWriter(read: String, reference: String) {
+    private var matchCount = 0
+    private var delCount = 0
+    private var string = ""
+    private var readPos = 0
+    private var refPos = 0
+
+    def add(cigarElement: CigarElement): Unit = {
       cigarElement.getOperator match {
-        case CigarOperator.M | CigarOperator.EQ | CigarOperator.X => {
-          for (i <- 0 until cigarElement.getLength) {
-            if (read(readPos) == reference(refPos)) {
-              matchCount += 1
-            } else {
-              string += matchCount.toString + reference(refPos)
-              matchCount = 0
-            }
-            readPos += 1
-            refPos += 1
-            delCount = 0
-          }
-        }
-        case CigarOperator.D => {
-          for (i <- 0 until cigarElement.getLength) {
-            if (delCount == 0) {
-              string += matchCount.toString + "^"
-            }
-            string += reference(refPos)
-
-            matchCount = 0
-            delCount += 1
-            refPos += 1
-          }
-        }
-        case _ => {
-          if (cigarElement.getOperator.consumesReadBases) {
-            readPos += cigarElement.getLength
-          }
-          if (cigarElement.getOperator.consumesReferenceBases) {
-            throw new IllegalArgumentException("Cannot handle operator: " + cigarElement.getOperator)
-          }
-        }
+        case CigarOperator.M | CigarOperator.EQ | CigarOperator.X =>
+          (0 until cigarElement.getLength).foreach(_ => alignedBase())
+        case CigarOperator.D =>
+          (0 until cigarElement.getLength).foreach(_ => deletedBase())
+        case _ =>
+          skip(cigarElement)
       }
-    })
+    }
 
-    string += matchCount.toString
+    def result: String = string + matchCount.toString
 
-    apply(string, start, cigar)
+    private def alignedBase(): Unit = {
+      if (read(readPos) == reference(refPos)) {
+        matchCount += 1
+      } else {
+        string += matchCount.toString + reference(refPos)
+        matchCount = 0
+      }
+      readPos += 1
+      refPos += 1
+      delCount = 0
+    }
+
+    private def deletedBase(): Unit = {
+      if (delCount == 0) {
+        string += matchCount.toString + "^"
+      }
+      string += reference(refPos)
+
+      matchCount = 0
+      delCount += 1
+      refPos += 1
+    }
+
+    private def skip(cigarElement: CigarElement): Unit = {
+      if (cigarElement.getOperator.consumesReadBases) {
+        readPos += cigarElement.getLength
+      }
+      if (cigarElement.getOperator.consumesReferenceBases) {
+        throw new IllegalArgumentException("Cannot handle operator: " + cigarElement.getOperator)
+      }
+    }
   }
 }
 
