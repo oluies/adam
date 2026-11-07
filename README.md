@@ -101,7 +101,8 @@ $ ./mill adam-assembly.assembly   # build the ADAM CLI überjar used by bin/adam
 ```
 
 Tests run against [scoverage](https://github.com/scoverage)-instrumented classes, with the
-JaCoCo agent measuring the Java classes. After `./mill __.test`:
+JaCoCo agent measuring the Java classes. JaCoCo data accumulates across runs; run
+`./mill jacoco.reset` first for the coverage of one run. After `./mill __.test`:
 
 - `./mill scoverage.htmlReportAll` writes a statement coverage report to `out/scoverage/htmlReportAll.dest`
 - `./mill jacoco.report` writes Java coverage to `target/site/jacoco/jacoco.xml`

@@ -14,6 +14,7 @@ jobs:
       # Mill fetches the JVM pinned by mill-jvm-version in build.mill
       - run: ./mill --ticker false __.compile
       # tests run against scoverage-instrumented classes, with the JaCoCo agent for Java
+      - run: ./mill --ticker false jacoco.reset
       - run: ./mill --ticker false __.test
       - run: ./mill --ticker false __.scoverage.xmlReport + jacoco.report
       # Python unit tests that need no Spark

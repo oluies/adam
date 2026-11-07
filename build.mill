@@ -99,18 +99,12 @@ trait AdamModule extends SbtModule with PublishModule with ScoverageModule {
 
     def jacocoAgent = Task { defaultResolver().classpath(Seq(Deps.jacocoAgent)).head }
 
-    /**
-     * A fresh JaCoCo data file for each Mill run, out/jacoco-data/<module>/<time>.exec.
-     * jacoco.report reads the newest file of each module, so earlier runs are not
-     * counted, and evaluating forkArgs without running tests loses nothing.
-     */
-    def jacocoExec = Task.Input {
-      (BuildCtx.workspaceRoot / "out" / "jacoco-data" / moduleSegments.render / s"${System.currentTimeMillis}.exec").toString
-    }
+    /** This module's JaCoCo data. Runs append to it until ./mill jacoco.reset clears it. */
+    def jacocoExec: os.Path = jacoco.dataDir / s"${moduleSegments.render}.exec"
 
     /** scoverage measures Scala; this JaCoCo agent measures the Java classes (see jacoco.report). */
     def jacocoArgs = Task {
-      Seq(s"-javaagent:${jacocoAgent().path}=destfile=${jacocoExec()},append=true,includes=org.bdgenomics.*")
+      Seq(s"-javaagent:${jacocoAgent().path}=destfile=$jacocoExec,append=true,includes=org.bdgenomics.*")
     }
 
     def forkArgs = Task { jacocoArgs() ++ baseForkArgs }
@@ -362,11 +356,20 @@ object scoverage extends ScoverageReport {
 }
 
 /**
- * Java coverage. Tests run with the JaCoCo agent (see AdamTests.jacocoArgs); after ./mill __.test,
- * ./mill jacoco.report writes target/site/jacoco/jacoco.xml, where crapper reads Java coverage.
+ * Java coverage. Tests run with the JaCoCo agent (see AdamTests.jacocoArgs), which appends to
+ * one data file per module. For coverage of a single run:
+ *   ./mill jacoco.reset && ./mill __.test && ./mill jacoco.report
+ * jacoco.report writes target/site/jacoco/jacoco.xml, where crapper reads Java coverage.
  */
 object jacoco extends Module {
   private def measured = Seq(`adam-utils`, `adam-codegen`, `adam-core`, `adam-apis`, `adam-cli`)
+
+  def dataDir: os.Path = BuildCtx.workspaceRoot / "out" / "jacoco-data"
+
+  /** Deletes the JaCoCo data of earlier test runs. */
+  def reset() = Task.Command {
+    BuildCtx.withFilesystemCheckerDisabled(os.remove.all(dataDir))
+  }
 
   def report() = Task.Command {
     // the tests load the scoverage builds of each module, so report on those class files
@@ -375,10 +378,8 @@ object jacoco extends Module {
     val cli = `adam-core`.defaultResolver().classpath(Seq(Deps.jacocoCli)).map(_.path)
     val xml = BuildCtx.workspaceRoot / "target" / "site" / "jacoco" / "jacoco.xml"
     BuildCtx.withFilesystemCheckerDisabled {
-      // the newest data file of each module is its latest test run
-      val execs = os.list(BuildCtx.workspaceRoot / "out" / "jacoco-data").filter(os.isDir)
-        .flatMap(module => os.list(module).filter(_.ext == "exec").maxByOption(_.last))
-        .map(_.toString)
+      val execs = if (os.exists(dataDir)) os.list(dataDir).filter(_.ext == "exec").map(_.toString) else Seq.empty
+      if (execs.isEmpty) sys.error("No JaCoCo data in " + dataDir + "; run ./mill __.test first.")
       os.makeDir.all(xml / os.up)
       mill.util.Jvm.callProcess(
         mainClass = "org.jacoco.cli.internal.Main",
