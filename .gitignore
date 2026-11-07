@@ -22,3 +22,6 @@ build
 .metrics
 __pycache__
 .coverage
+.pyenv
+.ruff_cache
+.pytest_cache

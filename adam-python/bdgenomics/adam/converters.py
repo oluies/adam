@@ -37,15 +37,18 @@ _CONVERTER_SUFFIXES = {
 }
 
 
-def converter_suffix(dest_class):
+def converter_suffix(dest_class: object) -> str:
     """
     The JVM converter name suffix for converting into dest_class.
+
+    Classes are looked up by name, so this module need not import ds.py
+    (or PySpark) to know them.
 
     :param dest_class: The Python genomic dataset class to convert into.
     :return: The suffix, e.g. "FragmentsDatasetConverter".
     :raises ValueError: If no converter into dest_class exists.
     """
-    name = getattr(dest_class, "__name__", None)
-    if name not in _CONVERTER_SUFFIXES:
-        raise ValueError("No conversion method known for %s." % dest_class)
-    return _CONVERTER_SUFFIXES[name]
+    suffix = _CONVERTER_SUFFIXES.get(getattr(dest_class, "__name__", ""))
+    if suffix is None:
+        raise ValueError(f"No conversion method known for {dest_class}.")
+    return suffix

@@ -16,30 +16,40 @@
 # limitations under the License.
 #
 
-import os
 import re
 import unittest
+from pathlib import Path
 
 from bdgenomics.adam.converters import _CONVERTER_SUFFIXES, converter_suffix
 
-_SCALA_CONVERTERS = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)),
-    "..", "..", "..", "adam-apis", "src", "main", "scala",
-    "org", "bdgenomics", "adam", "api", "java", "GenomicDatasetConverters.scala")
+_SCALA_CONVERTERS = (
+    Path(__file__).resolve().parents[3]
+    / "adam-apis/src/main/scala/org/bdgenomics/adam/api/java/GenomicDatasetConverters.scala"
+)
 
 
-class AlignmentDataset(object):
+def _jvm_suffixes() -> set[str]:
+    """The <To>DatasetConverter halves of the converter classes the JVM API defines."""
+    return set(
+        re.findall(
+            r"final class \w+?To(\w+DatasetConverter)\b", _SCALA_CONVERTERS.read_text()
+        )
+    )
+
+
+class AlignmentDataset:
     pass
 
 
-class VariantContextDataset(object):
+class VariantContextDataset:
     pass
 
 
 class ConvertersTest(unittest.TestCase):
-
     def test_suffix_for_a_dataset_class(self):
-        self.assertEqual(converter_suffix(AlignmentDataset), "AlignmentsDatasetConverter")
+        self.assertEqual(
+            converter_suffix(AlignmentDataset), "AlignmentsDatasetConverter"
+        )
 
     def test_unknown_class_is_rejected(self):
         with self.assertRaises(ValueError):
@@ -48,17 +58,12 @@ class ConvertersTest(unittest.TestCase):
             converter_suffix("not a class")
 
     def test_every_suffix_names_a_jvm_converter(self):
-        with open(_SCALA_CONVERTERS) as scala:
-            source = scala.read()
-        jvm_suffixes = set(re.findall(r"final class \w+?To(\w+DatasetConverter)\b", source))
+        jvm_suffixes = _jvm_suffixes()
         for name, suffix in _CONVERTER_SUFFIXES.items():
-            self.assertIn(suffix, jvm_suffixes, "%s -> %s" % (name, suffix))
+            self.assertIn(suffix, jvm_suffixes, f"{name} -> {suffix}")
 
     def test_every_jvm_converter_target_has_a_python_class(self):
-        with open(_SCALA_CONVERTERS) as scala:
-            source = scala.read()
-        jvm_suffixes = set(re.findall(r"final class \w+?To(\w+DatasetConverter)\b", source))
-        self.assertEqual(jvm_suffixes, set(_CONVERTER_SUFFIXES.values()))
+        self.assertEqual(_jvm_suffixes(), set(_CONVERTER_SUFFIXES.values()))
 
 
 if __name__ == "__main__":

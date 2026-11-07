@@ -17,11 +17,19 @@ jobs:
       - run: ./mill --ticker false jacoco.reset
       - run: ./mill --ticker false __.test
       - run: ./mill --ticker false __.scoverage.xmlReport + jacoco.report
-      # Python unit tests that need no Spark
-      - run: python3 -m pip install --quiet pytest && python3 -m pytest -q scripts adam-python/bdgenomics/adam/converters_test.py
+      - uses: astral-sh/setup-uv@v10
+      # Python that runs without Spark: lint, format, types and unit tests
+      - name: Python checks
+        env:
+          PY: scripts/fastq-interleaver.py scripts/test_fastq_interleaver.py adam-python/bdgenomics/adam/converters.py adam-python/bdgenomics/adam/converters_test.py
+        run: |
+          uvx ruff check $PY
+          uvx ruff format --check $PY
+          uv venv .pyenv && uv pip install --python .pyenv pytest
+          uvx ty check --python .pyenv $PY
+          .pyenv/bin/python -m pytest -q scripts adam-python/bdgenomics/adam/converters_test.py
       # CRAP scores (report only, no gate yet). crapper's Scala support is in
       # unclebob/crapper#33; pinned to that PR's commit until it is merged.
-      - uses: astral-sh/setup-uv@v10
       - run: uv tool install git+https://github.com/oluies/crapper@61a91e9655bfde1751eac7fb290ea3b2ebb58067
       - run: crapper --use-existing-coverage | head -60
       - run: ./mill --ticker false adam-assembly.assembly
