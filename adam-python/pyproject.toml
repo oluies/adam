@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bdgenomics.adam"
+description = "A fast, scalable genome analysis system"
+readme = "README.md"
+license = "Apache-2.0"
+authors = [{ name = "Big Data Genomics", email = "adam-developers@googlegroups.com" }]
+# PySpark 4.3 needs Python 3.11 or later
+requires-python = ">=3.11"
+dependencies = ["pyspark>=4.3,<5"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
+# setup.py supplies the version (from version.py) and bundles the ADAM jar and launcher scripts
+dynamic = ["version"]
+
+[project.urls]
+Homepage = "https://github.com/bigdatagenomics/adam"
+Documentation = "https://adam.readthedocs.io"
+
+[dependency-groups]
+dev = ["pytest>=8"]

@@ -57,9 +57,12 @@ class SparkTestCase(unittest.TestCase):
     def setUp(self):
         self._old_sys_path = list(sys.path)
         class_name = self.__class__.__name__
+        # expected outputs use '.' as the decimal separator, whatever the machine's locale
         self.ss = SparkSession.builder \
                               .master('local[4]') \
                               .appName(class_name) \
+                              .config('spark.driver.extraJavaOptions',
+                                      '-Duser.language=en -Duser.country=US') \
                               .getOrCreate()
         self.sc = self.ss.sparkContext
 

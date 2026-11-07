@@ -22,27 +22,27 @@ set -e
 SOURCE_DIR=$(dirname ${BASH_SOURCE[0]})
 . ${SOURCE_DIR}/find-adam-home
 
-# Find ADAM python egg
+# Find the zip of ADAM's Python package, built by `make develop` in adam-python
 if [ -d "$ADAM_HOME/repo" ]; then
   DIST_DIR="$ADAM_HOME/repo"
 else
   DIST_DIR="$ADAM_HOME/adam-python/dist"
 fi
 
-DIST_EGG=$(ls -1 "$DIST_DIR" | grep "^bdgenomics\.adam[0-9A-Za-z\.\_\-]*.egg$" || true)
-num_egg=$(echo ${DIST_EGG} | wc -w)
+DIST_ZIP=$(ls -1 "$DIST_DIR" | grep "^bdgenomics\.adam[0-9A-Za-z\.\_\-]*\.zip$" || true)
+num_zip=$(echo ${DIST_ZIP} | wc -w)
 
-if [ "$num_egg" -eq "0" ]; then
-  echo "Failed to find ADAM egg in $DIST_DIR." 1>&2
+if [ "$num_zip" -eq "0" ]; then
+  echo "Failed to find ADAM Python package zip in $DIST_DIR." 1>&2
   echo "You need to build ADAM before running this program." 1>&2
   exit 1
 fi
 
-if [ "$num_egg" -gt "1" ]; then
-  echo "Found multiple ADAM eggs in $DIST_DIR:" 1>&2
-  echo "$DIST_EGG" 1>&2
-  echo "Please remove all but one egg." 1>&2
+if [ "$num_zip" -gt "1" ]; then
+  echo "Found multiple ADAM Python package zips in $DIST_DIR:" 1>&2
+  echo "$DIST_ZIP" 1>&2
+  echo "Please remove all but one zip." 1>&2
   exit 1
 fi
 
-echo "${DIST_DIR}/${DIST_EGG}"
+echo "${DIST_DIR}/${DIST_ZIP}"

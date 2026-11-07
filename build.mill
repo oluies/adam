@@ -262,12 +262,22 @@ object `adam-assembly` extends AdamModule {
   def moduleDeps = Seq(`adam-cli`)
   def mainClass = Some("org.bdgenomics.adam.cli.ADAMMain")
 
-  /** Spark and Scala come from the cluster, so leave them out of the fat jar. */
+  /** The artifact name of a resolved jar, without its version: jackson-databind-2.21.2.jar -> jackson-databind. */
+  private def artifactOf(jar: String): String = jar.replaceFirst("-[0-9][^-]*(-[A-Za-z0-9.]+)?\\.jar$", "")
+
+  /**
+   * Artifacts the cluster provides: Spark's runtime classpath, Scala included. Like
+   * Maven's provided scope, these stay out of the fat jar, so a bundled older copy
+   * cannot shadow Spark's own (bin/pyadam and bin/adamR put the jar first on the
+   * driver classpath).
+   */
+  def sparkProvidedArtifacts = Task {
+    defaultResolver().classpath(Seq(Deps.sparkCore, Deps.sparkSql)).map(ref => artifactOf(ref.path.last)).toSet
+  }
+
   def upstreamIvyAssemblyClasspath = Task {
-    super.upstreamIvyAssemblyClasspath().filterNot { ref =>
-      val name = ref.path.last
-      name.startsWith("scala-library-") || name.startsWith("scala-reflect-")
-    }
+    val provided = sparkProvidedArtifacts()
+    super.upstreamIvyAssemblyClasspath().filterNot(ref => provided.contains(artifactOf(ref.path.last)))
   }
 
   /** A plain jar for spark-submit, without a launcher script prepended. */

@@ -21,11 +21,11 @@ jobs:
       # Python that runs without Spark: lint, format, types and unit tests
       - name: Python checks
         env:
-          PY: scripts/fastq-interleaver.py scripts/test_fastq_interleaver.py adam-python/bdgenomics/adam/converters.py adam-python/bdgenomics/adam/converters_test.py
+          PY: scripts/fastq-interleaver.py scripts/test_fastq_interleaver.py adam-python/setup.py adam-python/bdgenomics/adam/find_adam_home.py adam-python/bdgenomics/adam/converters.py adam-python/bdgenomics/adam/converters_test.py
         run: |
           uvx ruff check $PY
           uvx ruff format --check $PY
-          uv venv .pyenv && uv pip install --python .pyenv pytest
+          uv venv .pyenv && uv pip install --python .pyenv pytest setuptools
           uvx ty check --python .pyenv $PY
           .pyenv/bin/python -m pytest -q scripts adam-python/bdgenomics/adam/converters_test.py
       # CRAP scores (report only, no gate yet). crapper's Scala support is in
@@ -33,3 +33,16 @@ jobs:
       - run: uv tool install git+https://github.com/oluies/crapper@61a91e9655bfde1751eac7fb290ea3b2ebb58067
       - run: crapper --use-existing-coverage | head -60
       - run: ./mill --ticker false adam-assembly.assembly
+      # the Python API against PySpark 4.3 and the assembly jar; PySpark needs a JDK on PATH
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Python API tests
+        working-directory: adam-python
+        env:
+          UV_LOCKED: '1'
+        run: |
+          JAR=$(../bin/find-adam-assembly.sh)
+          export PYSPARK_SUBMIT_ARGS="--jars $JAR --driver-class-path $JAR pyspark-shell"
+          make test

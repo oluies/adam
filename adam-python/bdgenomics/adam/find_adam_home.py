@@ -23,9 +23,9 @@
 # This script attempt to determine the correct setting for ADAM_HOME given
 # that ADAM may have been installed on the system with pip.
 
-from __future__ import print_function
 import os
 import sys
+from importlib.util import find_spec
 
 
 def _find_adam_home():
@@ -36,29 +36,19 @@ def _find_adam_home():
 
     def is_adam_home(path):
         """Takes a path and returns true if the provided path could be a reasonable ADAM_HOME"""
-        return (os.path.isfile(os.path.join(path, "bin/adam-submit")) and
-                (os.path.isdir(os.path.join(path, "jars")) or
-                 os.path.isdir(os.path.join(path, "adam-assembly/target"))))
+        return os.path.isfile(os.path.join(path, "bin/adam-submit")) and (
+            os.path.isdir(os.path.join(path, "jars"))
+            or os.path.isfile(
+                os.path.join(path, "out/adam-assembly/assembly.dest/out.jar")
+            )
+        )
 
     paths = [os.path.join(os.path.dirname(os.path.realpath(__file__)), "..")]
 
     # Add the path of the ADAM module if it exists
-    if sys.version < "3":
-        import imp
-        try:
-            module_home = imp.find_module("bdgenomics")[1]
-            paths.append(os.path.join(module_home, "adam"))
-        except ImportError:
-            # Not pip installed no worries
-            pass
-    else:
-        from importlib.util import find_spec
-        try:
-            module_home = os.path.dirname(find_spec("bdgenomics").origin)
-            paths.append(os.path.join(module_home, "adam"))
-        except ImportError:
-            # Not pip installed no worries
-            pass
+    spec = find_spec("bdgenomics")
+    if spec is not None and spec.origin is not None:
+        paths.append(os.path.join(os.path.dirname(spec.origin), "adam"))
 
     # Normalize the paths
     print(repr(paths), file=sys.stderr)
@@ -67,8 +57,11 @@ def _find_adam_home():
     try:
         return next(path for path in paths if is_adam_home(path))
     except StopIteration:
-        print("Could not find valid ADAM_HOME while searching {0}".format(paths), file=sys.stderr)
-        exit(1)
+        print(
+            f"Could not find valid ADAM_HOME while searching {paths}", file=sys.stderr
+        )
+        sys.exit(1)
+
 
 if __name__ == "__main__":
     print(_find_adam_home())

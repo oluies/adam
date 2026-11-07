@@ -40,7 +40,7 @@ import logging
 
 from py4j.java_gateway import get_java_class
 from pyspark.rdd import RDD
-from pyspark.sql import DataFrame, SQLContext
+from pyspark.sql import DataFrame, SparkSession
 
 from bdgenomics.adam.converters import converter_suffix
 from bdgenomics.adam.stringency import LENIENT, _toJava
@@ -558,7 +558,7 @@ class GenomicDataset(object):
         :return: Returns a dataframe representing this genomic dataset.
         """
 
-        return DataFrame(self._jvmDataset.toDF(), SQLContext(self.sc))
+        return DataFrame(self._jvmDataset.toDF(), SparkSession.builder.getOrCreate())
 
 
 class VCFSupportingGenomicDataset(GenomicDataset):
@@ -944,7 +944,7 @@ class AlignmentDataset(GenomicDataset):
         """
 
         return DataFrame(self._jvmDataset.countKmersAsDataset(kmerLength).toDF(),
-                         SQLContext(self.sc))
+                         SparkSession.builder.getOrCreate())
 
 
     def sortByReadName(self):
