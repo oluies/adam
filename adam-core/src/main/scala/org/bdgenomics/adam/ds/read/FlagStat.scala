@@ -93,26 +93,7 @@ private[read] object FlagStat {
   def i(int: java.lang.Integer): Int = Option(int).map(Integer2int).getOrElse(-1)
 
   def apply(rdd: RDD[Alignment]) = {
-    rdd.map {
-      p =>
-        val mateMappedToDiffChromosome =
-          p.getReadPaired && p.getReadMapped && p.getMateMapped && (p.getReferenceName != p.getMateReferenceName)
-        val (primaryDuplicates, secondaryDuplicates) = DuplicateMetrics(p)
-        new FlagStatMetrics(
-          1,
-          primaryDuplicates, secondaryDuplicates,
-          b2i(b(p.getReadMapped)),
-          b2i(b(p.getReadPaired) && b(!p.getSupplementaryAlignment) && p.getPrimaryAlignment),
-          b2i(b(p.getReadPaired) && p.getReadInFragment == 0 && b(!p.getSupplementaryAlignment) && p.getPrimaryAlignment),
-          b2i(b(p.getReadPaired) && p.getReadInFragment == 1 && b(!p.getSupplementaryAlignment) && p.getPrimaryAlignment),
-          b2i(b(p.getReadPaired) && b(p.getProperPair) && b(!p.getSupplementaryAlignment) && p.getPrimaryAlignment),
-          b2i(b(p.getReadPaired) && b(p.getReadMapped) && b(p.getMateMapped) && b(!p.getSupplementaryAlignment) && p.getPrimaryAlignment),
-          b2i(b(p.getReadPaired) && b(p.getReadMapped) && b(!p.getMateMapped) && b(!p.getSupplementaryAlignment) && p.getPrimaryAlignment),
-          b2i(b(mateMappedToDiffChromosome) && b(!p.getSupplementaryAlignment) && p.getPrimaryAlignment),
-          b2i(b(mateMappedToDiffChromosome && i(p.getMappingQuality) >= 5) && b(!p.getSupplementaryAlignment) && p.getPrimaryAlignment),
-          p.getFailedVendorQualityChecks
-        )
-    }.aggregate((FlagStatMetrics.emptyFailedQuality, FlagStatMetrics.emptyPassedQuality))(
+    rdd.map(metrics).aggregate((FlagStatMetrics.emptyFailedQuality, FlagStatMetrics.emptyPassedQuality))(
       seqOp = {
         (a, b) =>
           if (b.failedQuality) {
@@ -126,5 +107,47 @@ private[read] object FlagStat {
           (a._1 + b._1, a._2 + b._2)
       }
     )
+  }
+
+  /** The metrics one record contributes. */
+  private[read] def metrics(p: Alignment): FlagStatMetrics = {
+    val record = new RecordFlags(p)
+    val (primaryDuplicates, secondaryDuplicates) = DuplicateMetrics(p)
+    new FlagStatMetrics(
+      1,
+      primaryDuplicates, secondaryDuplicates,
+      b2i(b(p.getReadMapped)),
+      record.pairedInSequencing,
+      record.read1,
+      record.read2,
+      record.properlyPaired,
+      record.withSelfAndMateMapped,
+      record.singleton,
+      record.withMateMappedToDiffChromosome,
+      record.withMateMappedToDiffChromosomeMapQ5,
+      p.getFailedVendorQualityChecks
+    )
+  }
+
+  /**
+   * The pair-related flags of one record, as 0 or 1. Pair metrics only count
+   * primary, non-supplementary records; each test is evaluated in the same
+   * order as samtools flagstat's conditions read, left to right.
+   */
+  private class RecordFlags(p: Alignment) {
+    private lazy val counted = b(!p.getSupplementaryAlignment) && p.getPrimaryAlignment
+    private def paired = b(p.getReadPaired)
+    private def mateMappedToDiffChromosome =
+      p.getReadPaired && p.getReadMapped && p.getMateMapped && (p.getReferenceName != p.getMateReferenceName)
+
+    def pairedInSequencing: Int = b2i(paired && counted)
+    def read1: Int = b2i(paired && p.getReadInFragment == 0 && counted)
+    def read2: Int = b2i(paired && p.getReadInFragment == 1 && counted)
+    def properlyPaired: Int = b2i(paired && b(p.getProperPair) && counted)
+    def withSelfAndMateMapped: Int = b2i(paired && b(p.getReadMapped) && b(p.getMateMapped) && counted)
+    def singleton: Int = b2i(paired && b(p.getReadMapped) && b(!p.getMateMapped) && counted)
+    def withMateMappedToDiffChromosome: Int = b2i(b(mateMappedToDiffChromosome) && counted)
+    def withMateMappedToDiffChromosomeMapQ5: Int =
+      b2i(b(mateMappedToDiffChromosome && i(p.getMappingQuality) >= 5) && counted)
   }
 }

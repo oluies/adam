@@ -105,25 +105,6 @@ object VariantContextConverter {
   private lazy val splitFromMultiAllelicField = Genotype.SCHEMA$.getField("splitFromMultiAllelic")
 
   /**
-   * One conversion method for each way of representing an Allele
-   *
-   * An htsjdk Allele can represent a reference or alternate allele call, or a
-   * site where no call could be made. If the allele is an alternate allele, we
-   * check to see if this matches the primary alt allele at the site before
-   * deciding to tag it as a primary alt (Alt) or a secondary alt (OtherAlt).
-   *
-   * @param vc The underlying VariantContext for the site.
-   * @param allele The allele we are converting.
-   * @return The Avro representation for this allele.
-   */
-  private def convertAllele(vc: HtsjdkVariantContext, allele: Allele): GenotypeAllele = {
-    if (allele.isNoCall) GenotypeAllele.NO_CALL
-    else if (allele.isReference) GenotypeAllele.REF
-    else if (allele == NON_REF_ALLELE || !vc.hasAlternateAllele(allele)) GenotypeAllele.OTHER_ALT
-    else GenotypeAllele.ALT
-  }
-
-  /**
    * Converts an allele string from an avro Variant into an htsjdk Allele.
    *
    * @param allele String representation of the allele. If null, we return an
@@ -1470,110 +1451,183 @@ class VariantContextConverter(
       .map(attr => (id, attr))
   }
 
+  private def hasFixedCount(headerLine: VCFCompoundHeaderLine,
+                            count: Int): Boolean = {
+    headerLine.isFixedCount && headerLine.getCount == count
+  }
+
+  private def isFixedCountZeroFlag(headerLine: VCFCompoundHeaderLine): Boolean = {
+    hasFixedCount(headerLine, 0) && headerLine.getType == VCFHeaderLineType.Flag
+  }
+
+  private def attributeConverter(
+    lineType: VCFHeaderLineType): (java.lang.Object => Any) = {
+    lineType match {
+      case VCFHeaderLineType.Flag      => toBoolean(_)
+      case VCFHeaderLineType.Character => toChar(_)
+      case VCFHeaderLineType.Float     => toFloat(_)
+      case VCFHeaderLineType.Integer   => toInt(_)
+      case VCFHeaderLineType.String    => asString(_)
+    }
+  }
+
+  private def infoObjToArray(obj: java.lang.Object): Array[String] = {
+    try {
+      val l: java.util.List[String] = obj.asInstanceOf[java.util.List[String]]
+      val sL: mutable.Buffer[String] = l.asScala
+      sL.toArray
+    } catch {
+      case cce: ClassCastException => {
+        // is this a string? if so, split
+        if (obj.getClass.isAssignableFrom(classOf[String])) {
+          obj.asInstanceOf[String].split(",")
+        } else {
+          throw cce
+        }
+      }
+      case t: Throwable => {
+        throw t
+      }
+    }
+  }
+
+  private def variantContextSingleExtractor(
+    id: String,
+    toFn: (java.lang.Object => Any)): (HtsjdkVariantContext, Int, Array[Int]) => Option[(String, String)] = {
+    (vc: HtsjdkVariantContext, idx: Int, indices: Array[Int]) =>
+      {
+        variantContextFieldExtractor(vc, id, toFn).map(kv => (kv._1, kv._2.toString))
+      }
+  }
+
+  private def variantContextArrayExtractor(
+    id: String,
+    toFn: (java.lang.Object => Array[String]),
+    indicesFn: Int => List[Int]): (HtsjdkVariantContext, Int, Array[Int]) => Option[(String, String)] = {
+    (vc: HtsjdkVariantContext, idx: Int, indices: Array[Int]) =>
+      {
+        arrayFieldExtractor(vc, id, toFn, indicesFn(idx))
+          .map(kv => (kv._1, kv._2.mkString(",")))
+      }
+  }
+
+  private def variantContextNumberGExtractor(
+    headerLine: VCFInfoHeaderLine): Option[(HtsjdkVariantContext, Int, Array[Int]) => Option[(String, String)]] = {
+    if (stringency == ValidationStringency.LENIENT) {
+      logger.warn("Ignoring INFO field with Number=G described in header row: %s".format(headerLine))
+      None
+    } else
+      throw new IllegalArgumentException("Number=G INFO lines are not supported in split-allelic model: %s".format(
+        headerLine))
+  }
+
+  private def variantContextMultiValueExtractor(
+    headerLine: VCFInfoHeaderLine): Option[(HtsjdkVariantContext, Int, Array[Int]) => Option[(String, String)]] = {
+    val id = headerLine.getID
+
+    if (headerLine.getType == VCFHeaderLineType.Flag) {
+      throw new IllegalArgumentException("Multivalued flags are not supported for INFO lines: %s".format(
+        headerLine))
+    }
+    val toFn: (java.lang.Object => Array[String]) = infoObjToArray(_)
+
+    (headerLine.isFixedCount, headerLine.getCountType) match {
+      case (false, VCFHeaderLineCount.A) => {
+        Some((vc: HtsjdkVariantContext, idx: Int, indices: Array[Int]) =>
+          {
+            fromArrayExtractor(vc, id, toFn, idx)
+              .map(kv => (kv._1, kv._2.toString))
+          })
+      }
+      case (false, VCFHeaderLineCount.R) => {
+        Some(variantContextArrayExtractor(id, toFn, idx => List(0, idx + 1)))
+      }
+      case (false, VCFHeaderLineCount.G) => {
+        variantContextNumberGExtractor(headerLine)
+      }
+      case _ => {
+        Some(variantContextArrayExtractor(id, toFn, idx => List.empty))
+      }
+    }
+  }
+
   private def lineToVariantContextExtractor(
     headerLine: VCFInfoHeaderLine): Option[(HtsjdkVariantContext, Int, Array[Int]) => Option[(String, String)]] = {
     val id = headerLine.getID
 
-    if (headerLine.isFixedCount && headerLine.getCount == 0 && headerLine.getType == VCFHeaderLineType.Flag) {
-      Some((vc: HtsjdkVariantContext, idx: Int, indices: Array[Int]) =>
-        {
-          variantContextFieldExtractor(vc, id, toBoolean).map(kv => (kv._1, kv._2.toString))
-        })
-    } else if (headerLine.isFixedCount && headerLine.getCount == 1) {
-      headerLine.getType match {
-        // Flag header line types should be Number=0, but we'll allow Number=1
-        case VCFHeaderLineType.Flag => {
-          Some((vc: HtsjdkVariantContext, idx: Int, indices: Array[Int]) =>
-            {
-              variantContextFieldExtractor(vc, id, toBoolean).map(kv => (kv._1, kv._2.toString))
-            })
-        }
-        case VCFHeaderLineType.Character => {
-          Some((vc: HtsjdkVariantContext, idx: Int, indices: Array[Int]) =>
-            {
-              variantContextFieldExtractor(vc, id, toChar).map(kv => (kv._1, kv._2.toString))
-            })
-        }
-        case VCFHeaderLineType.Float => {
-          Some((vc: HtsjdkVariantContext, idx: Int, indices: Array[Int]) =>
-            {
-              variantContextFieldExtractor(vc, id, toFloat).map(kv => (kv._1, kv._2.toString))
-            })
-        }
-        case VCFHeaderLineType.Integer => {
-          Some((vc: HtsjdkVariantContext, idx: Int, indices: Array[Int]) =>
-            {
-              variantContextFieldExtractor(vc, id, toInt).map(kv => (kv._1, kv._2.toString))
-            })
-        }
-        case VCFHeaderLineType.String => {
-          Some((vc: HtsjdkVariantContext, idx: Int, indices: Array[Int]) =>
-            {
-              variantContextFieldExtractor(vc, id, asString).map(kv => (kv._1, kv._2.toString))
-            })
-        }
-      }
+    if (isFixedCountZeroFlag(headerLine)) {
+      Some(variantContextSingleExtractor(id, toBoolean(_)))
+    } else if (hasFixedCount(headerLine, 1)) {
+      // Flag header line types should be Number=0, but we'll allow Number=1
+      Some(variantContextSingleExtractor(id, attributeConverter(headerLine.getType)))
     } else {
-      def objToArray(obj: java.lang.Object): Array[String] = {
-        try {
-          val l: java.util.List[String] = obj.asInstanceOf[java.util.List[String]]
-          val sL: mutable.Buffer[String] = l.asScala
-          sL.toArray
-        } catch {
-          case cce: ClassCastException => {
-            // is this a string? if so, split
-            if (obj.getClass.isAssignableFrom(classOf[String])) {
-              obj.asInstanceOf[String].split(",")
-            } else {
-              throw cce
-            }
-          }
-          case t: Throwable => {
-            throw t
-          }
-        }
-      }
+      variantContextMultiValueExtractor(headerLine)
+    }
+  }
 
-      val toFn: (java.lang.Object => Array[String]) = headerLine.getType match {
-        case VCFHeaderLineType.Flag => {
-          throw new IllegalArgumentException("Multivalued flags are not supported for INFO lines: %s".format(
-            headerLine))
-        }
-        case _ => {
-          objToArray(_)
-        }
-      }
+  private def genotypeConverter(
+    headerLine: VCFFormatHeaderLine): (java.lang.Object => Any) = {
+    if (headerLine.getType == VCFHeaderLineType.Flag) {
+      throw new IllegalArgumentException("Flag is not supported for Format lines: %s".format(
+        headerLine))
+    }
+    attributeConverter(headerLine.getType)
+  }
 
-      (headerLine.isFixedCount, headerLine.getCountType) match {
-        case (false, VCFHeaderLineCount.A) => {
-          Some((vc: HtsjdkVariantContext, idx: Int, indices: Array[Int]) =>
-            {
-              fromArrayExtractor(vc, id, toFn, idx)
-                .map(kv => (kv._1, kv._2.toString))
-            })
-        }
-        case (false, VCFHeaderLineCount.R) => {
-          Some((vc: HtsjdkVariantContext, idx: Int, indices: Array[Int]) =>
-            {
-              arrayFieldExtractor(vc, id, toFn, List(0, idx + 1))
-                .map(kv => (kv._1, kv._2.mkString(",")))
-            })
-        }
-        case (false, VCFHeaderLineCount.G) => {
-          if (stringency == ValidationStringency.LENIENT) {
-            logger.warn("Ignoring INFO field with Number=G described in header row: %s".format(headerLine))
-            None
-          } else
-            throw new IllegalArgumentException("Number=G INFO lines are not supported in split-allelic model: %s".format(
-              headerLine))
-        }
-        case _ => {
-          Some((vc: HtsjdkVariantContext, idx: Int, indices: Array[Int]) =>
-            {
-              arrayFieldExtractor(vc, id, toFn, List.empty)
-                .map(kv => (kv._1, kv._2.mkString(",")))
-            })
-        }
+  private def genotypeArrayConverter(
+    headerLine: VCFFormatHeaderLine): (java.lang.Object => Array[String]) = {
+    headerLine.getType match {
+      case VCFHeaderLineType.Flag => {
+        throw new IllegalArgumentException("Flag is not supported for Format lines: %s".format(
+          headerLine))
+      }
+      case VCFHeaderLineType.Character => {
+        toCharArray(_).map(c => c.toString)
+      }
+      case VCFHeaderLineType.Float => {
+        toFloatArray(_).map(f => f.toString)
+      }
+      case VCFHeaderLineType.Integer => {
+        toIntArray(_).map(i => i.toString)
+      }
+      case VCFHeaderLineType.String => {
+        toStringArray(_)
+      }
+    }
+  }
+
+  private def genotypeArrayExtractor(
+    id: String,
+    toFn: (java.lang.Object => Array[String]),
+    indicesFn: (Int, Array[Int]) => List[Int]): (HtsjdkGenotype, Int, Array[Int]) => Option[(String, String)] = {
+    (g: HtsjdkGenotype, idx: Int, indices: Array[Int]) =>
+      {
+        arrayFieldExtractor(g, id, toFn, indicesFn(idx, indices))
+          .map(kv => (kv._1, kv._2.mkString(",")))
+      }
+  }
+
+  private def genotypeMultiValueExtractor(
+    headerLine: VCFFormatHeaderLine): ((HtsjdkGenotype, Int, Array[Int]) => Option[(String, String)]) = {
+    val id = headerLine.getID
+    val toFn = genotypeArrayConverter(headerLine)
+
+    (headerLine.isFixedCount, headerLine.getCountType) match {
+      case (false, VCFHeaderLineCount.A) => {
+        (g: HtsjdkGenotype, idx: Int, indices: Array[Int]) =>
+          {
+            fromArrayExtractor(g, id, toFn, idx - 1)
+              .map(kv => (kv._1, kv._2.toString))
+          }
+      }
+      case (false, VCFHeaderLineCount.R) => {
+        genotypeArrayExtractor(id, toFn, (idx, indices) => List(0, idx))
+      }
+      case (false, VCFHeaderLineCount.G) => {
+        genotypeArrayExtractor(id, toFn, (idx, indices) => indices.toList)
+      }
+      case _ => {
+        genotypeArrayExtractor(id, toFn, (idx, indices) => List.empty)
       }
     }
   }
@@ -1582,87 +1636,15 @@ class VariantContextConverter(
     headerLine: VCFFormatHeaderLine): ((HtsjdkGenotype, Int, Array[Int]) => Option[(String, String)]) = {
     val id = headerLine.getID
 
-    if (headerLine.isFixedCount && headerLine.getCount == 1) {
-      headerLine.getType match {
-        case VCFHeaderLineType.Flag => {
-          throw new IllegalArgumentException("Flag is not supported for Format lines: %s".format(
-            headerLine))
-        }
-        case VCFHeaderLineType.Character => {
-          (g: HtsjdkGenotype, idx: Int, indices: Array[Int]) =>
-            {
-              fieldExtractor(g, id, toChar).map(kv => (kv._1, kv._2.toString))
-            }
-        }
-        case VCFHeaderLineType.Float => {
-          (g: HtsjdkGenotype, idx: Int, indices: Array[Int]) =>
-            {
-              fieldExtractor(g, id, toFloat).map(kv => (kv._1, kv._2.toString))
-            }
-        }
-        case VCFHeaderLineType.Integer => {
-          (g: HtsjdkGenotype, idx: Int, indices: Array[Int]) =>
-            {
-              fieldExtractor(g, id, toInt).map(kv => (kv._1, kv._2.toString))
-            }
-        }
-        case VCFHeaderLineType.String => {
-          (g: HtsjdkGenotype, idx: Int, indices: Array[Int]) =>
-            {
-              fieldExtractor(g, id, asString).map(kv => (kv._1, kv._2.toString))
-            }
-        }
-      }
-    } else {
-      val toFn: (java.lang.Object => Array[String]) = headerLine.getType match {
-        case VCFHeaderLineType.Flag => {
-          throw new IllegalArgumentException("Flag is not supported for Format lines: %s".format(
-            headerLine))
-        }
-        case VCFHeaderLineType.Character => {
-          toCharArray(_).map(c => c.toString)
-        }
-        case VCFHeaderLineType.Float => {
-          toFloatArray(_).map(f => f.toString)
-        }
-        case VCFHeaderLineType.Integer => {
-          toIntArray(_).map(i => i.toString)
-        }
-        case VCFHeaderLineType.String => {
-          toStringArray(_)
-        }
-      }
+    if (hasFixedCount(headerLine, 1)) {
+      val toFn = genotypeConverter(headerLine)
 
-      (headerLine.isFixedCount, headerLine.getCountType) match {
-        case (false, VCFHeaderLineCount.A) => {
-          (g: HtsjdkGenotype, idx: Int, indices: Array[Int]) =>
-            {
-              fromArrayExtractor(g, id, toFn, idx - 1)
-                .map(kv => (kv._1, kv._2.toString))
-            }
+      (g: HtsjdkGenotype, idx: Int, indices: Array[Int]) =>
+        {
+          fieldExtractor(g, id, toFn).map(kv => (kv._1, kv._2.toString))
         }
-        case (false, VCFHeaderLineCount.R) => {
-          (g: HtsjdkGenotype, idx: Int, indices: Array[Int]) =>
-            {
-              arrayFieldExtractor(g, id, toFn, List(0, idx))
-                .map(kv => (kv._1, kv._2.mkString(",")))
-            }
-        }
-        case (false, VCFHeaderLineCount.G) => {
-          (g: HtsjdkGenotype, idx: Int, indices: Array[Int]) =>
-            {
-              arrayFieldExtractor(g, id, toFn, indices.toList)
-                .map(kv => (kv._1, kv._2.mkString(",")))
-            }
-        }
-        case _ => {
-          (g: HtsjdkGenotype, idx: Int, indices: Array[Int]) =>
-            {
-              arrayFieldExtractor(g, id, toFn, List.empty)
-                .map(kv => (kv._1, kv._2.mkString(",")))
-            }
-        }
-      }
+    } else {
+      genotypeMultiValueExtractor(headerLine)
     }
   }
 
@@ -1928,131 +1910,100 @@ class VariantContextConverter(
     convert(_, _, _, _, _, _)
   }
 
+  private def singleValueFromString(
+    id: String,
+    lineType: VCFHeaderLineType): String => java.lang.Object = {
+    lineType match {
+      case VCFHeaderLineType.Flag => {
+        s => (s.toBoolean: java.lang.Boolean)
+      }
+      case VCFHeaderLineType.Character => {
+        s =>
+          {
+            require(s.length == 1,
+              "Expected character field: %s.".format(id))
+            (s(0): java.lang.Character)
+          }
+      }
+      case VCFHeaderLineType.Float => {
+        s => (s.toFloat: java.lang.Float)
+      }
+      case VCFHeaderLineType.Integer => {
+        s => (s.toInt: java.lang.Integer)
+      }
+      case VCFHeaderLineType.String => {
+        // don't need to force to the java type, as String in scala is
+        // an alias for java.lang.String
+        s => s
+      }
+    }
+  }
+
+  private def multiValueFromString(
+    id: String,
+    lineType: VCFHeaderLineType,
+    flagError: => String): (Map[String, String], String) => java.lang.Object = {
+    lineType match {
+      case VCFHeaderLineType.Flag => {
+        throw new IllegalArgumentException(flagError)
+      }
+      case VCFHeaderLineType.Character => {
+        (m, v) =>
+          {
+            v.split(",")
+              .map(c => {
+                require(c.length == 1,
+                  "Expected character field: %s in %s.".format(id,
+                    m))
+                c(0): java.lang.Character
+              })
+          }
+      }
+      case VCFHeaderLineType.Float => {
+        (m, v) => v.split(",").map(f => f.toFloat: java.lang.Float)
+      }
+      case VCFHeaderLineType.Integer => {
+        (m, v) => v.split(",").map(i => i.toInt: java.lang.Integer)
+      }
+      case VCFHeaderLineType.String => {
+        // don't need to force to the java type, as String in scala is
+        // an alias for java.lang.String
+        (m, v) => v.split(",")
+      }
+    }
+  }
+
+  private def singleValueExtractor(
+    id: String,
+    toFn: String => java.lang.Object): (Map[String, String]) => Option[(String, java.lang.Object)] = {
+    (m: Map[String, String]) =>
+      {
+        m.get(id).map(v => (id, toFn(v)))
+      }
+  }
+
+  private def multiValueExtractor(
+    id: String,
+    toFn: (Map[String, String], String) => java.lang.Object): (Map[String, String]) => Option[(String, java.lang.Object)] = {
+    (m: Map[String, String]) =>
+      {
+        m.get(id).map(v => (id, toFn(m, v)))
+      }
+  }
+
   private def extractorFromInfoLine(
     headerLine: VCFInfoHeaderLine): (Map[String, String]) => Option[(String, java.lang.Object)] = {
 
     val id = headerLine.getID
 
-    def toCharAndKey(s: String): (String, java.lang.Object) = {
-
-      require(s.length == 1,
-        "Expected character field: %s.".format(id))
-      val javaChar: java.lang.Character = s(0)
-
-      (id, javaChar.asInstanceOf[java.lang.Object])
-    }
-
-    def toFloatAndKey(s: String): (String, java.lang.Object) = {
-      val javaFloat: java.lang.Float = s.toFloat
-
-      (id, javaFloat.asInstanceOf[java.lang.Object])
-    }
-
-    def toBooleanAndKey(s: String): (String, java.lang.Object) = {
-      val javaBoolean: java.lang.Boolean = s.toBoolean
-
-      (id, javaBoolean.asInstanceOf[java.lang.Object])
-    }
-
-    def toIntAndKey(s: String): (String, java.lang.Object) = {
-      val javaInteger: java.lang.Integer = s.toInt
-
-      (id, javaInteger.asInstanceOf[java.lang.Object])
-    }
-
-    if (headerLine.isFixedCount && headerLine.getCount == 0 && headerLine.getType == VCFHeaderLineType.Flag) {
-      (m: Map[String, String]) =>
-        {
-          m.get(id).map(toBooleanAndKey)
-        }
-    } else if (headerLine.isFixedCount && headerLine.getCount == 1) {
-      headerLine.getType match {
-        // Flag header line types should be Number=0, but we'll allow Number=1
-        case VCFHeaderLineType.Flag => {
-          (m: Map[String, String]) =>
-            {
-              m.get(id).map(toBooleanAndKey)
-            }
-        }
-        case VCFHeaderLineType.Character => {
-          (m: Map[String, String]) =>
-            {
-              m.get(id).map(toCharAndKey)
-            }
-        }
-        case VCFHeaderLineType.Float => {
-          (m: Map[String, String]) =>
-            {
-              m.get(id).map(toFloatAndKey)
-            }
-        }
-        case VCFHeaderLineType.Integer => {
-          (m: Map[String, String]) =>
-            {
-              m.get(id).map(toIntAndKey)
-            }
-        }
-        case VCFHeaderLineType.String => {
-          (m: Map[String, String]) =>
-            {
-              // don't need to force to the java type, as String in scala is
-              // an alias for java.lang.String
-              m.get(id).map(v => (id, v.asInstanceOf[java.lang.Object]))
-            }
-        }
-      }
+    if (isFixedCountZeroFlag(headerLine)) {
+      singleValueExtractor(id, singleValueFromString(id, VCFHeaderLineType.Flag))
+    } else if (hasFixedCount(headerLine, 1)) {
+      // Flag header line types should be Number=0, but we'll allow Number=1
+      singleValueExtractor(id, singleValueFromString(id, headerLine.getType))
     } else {
-
-      headerLine.getType match {
-        case VCFHeaderLineType.Flag => {
-          throw new IllegalArgumentException("Multivalue flags are not supported for INFO lines: %s".format(
-            headerLine))
-        }
-        case VCFHeaderLineType.Character => {
-          (m: Map[String, String]) =>
-            {
-              m.get(id).map(v => {
-                (id, v.split(",")
-                  .map(c => {
-                    require(c.length == 1,
-                      "Expected character field: %s in %s.".format(id,
-                        m))
-                    c(0): java.lang.Character
-                  }).asInstanceOf[java.lang.Object])
-              })
-            }
-        }
-        case VCFHeaderLineType.Float => {
-          (m: Map[String, String]) =>
-            {
-              m.get(id).map(v => {
-                (id, v.split(",")
-                  .map(f => {
-                    f.toFloat: java.lang.Float
-                  }).asInstanceOf[java.lang.Object])
-              })
-            }
-        }
-        case VCFHeaderLineType.Integer => {
-          (m: Map[String, String]) =>
-            {
-              m.get(id).map(v => {
-                (id, v.split(",")
-                  .map(i => {
-                    i.toInt: java.lang.Integer
-                  }).asInstanceOf[java.lang.Object])
-              })
-            }
-        }
-        case VCFHeaderLineType.String => {
-          (m: Map[String, String]) =>
-            {
-              // don't need to force to the java type, as String in scala is
-              // an alias for java.lang.String
-              m.get(id).map(v => (id, v.split(",").asInstanceOf[java.lang.Object]))
-            }
-        }
-      }
+      multiValueExtractor(id, multiValueFromString(id, headerLine.getType,
+        "Multivalue flags are not supported for INFO lines: %s".format(headerLine)))
     }
   }
 
@@ -2060,113 +2011,15 @@ class VariantContextConverter(
     headerLine: VCFFormatHeaderLine): (Map[String, String]) => Option[(String, java.lang.Object)] = {
 
     val id = headerLine.getID
+    def flagError: String = "Flag is not supported for Format lines: %s".format(headerLine)
 
-    def toCharAndKey(s: String): (String, java.lang.Object) = {
-
-      require(s.length == 1,
-        "Expected character field: %s.".format(id))
-      val javaChar: java.lang.Character = s(0)
-
-      (id, javaChar.asInstanceOf[java.lang.Object])
-    }
-
-    def toFloatAndKey(s: String): (String, java.lang.Object) = {
-      val javaFloat: java.lang.Float = s.toFloat
-
-      (id, javaFloat.asInstanceOf[java.lang.Object])
-    }
-
-    def toIntAndKey(s: String): (String, java.lang.Object) = {
-      val javaInteger: java.lang.Integer = s.toInt
-
-      (id, javaInteger.asInstanceOf[java.lang.Object])
-    }
-
-    if (headerLine.isFixedCount && headerLine.getCount == 1) {
-      headerLine.getType match {
-        case VCFHeaderLineType.Flag => {
-          throw new IllegalArgumentException("Flag is not supported for Format lines: %s".format(
-            headerLine))
-        }
-        case VCFHeaderLineType.Character => {
-          (m: Map[String, String]) =>
-            {
-              m.get(id).map(toCharAndKey)
-            }
-        }
-        case VCFHeaderLineType.Float => {
-          (m: Map[String, String]) =>
-            {
-              m.get(id).map(toFloatAndKey)
-            }
-        }
-        case VCFHeaderLineType.Integer => {
-          (m: Map[String, String]) =>
-            {
-              m.get(id).map(toIntAndKey)
-            }
-        }
-        case VCFHeaderLineType.String => {
-          (m: Map[String, String]) =>
-            {
-              // don't need to force to the java type, as String in scala is
-              // an alias for java.lang.String
-              m.get(id).map(v => (id, v.asInstanceOf[java.lang.Object]))
-            }
-        }
+    if (hasFixedCount(headerLine, 1)) {
+      if (headerLine.getType == VCFHeaderLineType.Flag) {
+        throw new IllegalArgumentException(flagError)
       }
+      singleValueExtractor(id, singleValueFromString(id, headerLine.getType))
     } else {
-
-      headerLine.getType match {
-        case VCFHeaderLineType.Flag => {
-          throw new IllegalArgumentException("Flag is not supported for Format lines: %s".format(
-            headerLine))
-        }
-        case VCFHeaderLineType.Character => {
-          (m: Map[String, String]) =>
-            {
-              m.get(id).map(v => {
-                (id, v.split(",")
-                  .map(c => {
-                    require(c.length == 1,
-                      "Expected character field: %s in %s.".format(id,
-                        m))
-                    c(0): java.lang.Character
-                  }).asInstanceOf[java.lang.Object])
-              })
-            }
-        }
-        case VCFHeaderLineType.Float => {
-          (m: Map[String, String]) =>
-            {
-              m.get(id).map(v => {
-                (id, v.split(",")
-                  .map(f => {
-                    f.toFloat: java.lang.Float
-                  }).asInstanceOf[java.lang.Object])
-              })
-            }
-        }
-        case VCFHeaderLineType.Integer => {
-          (m: Map[String, String]) =>
-            {
-              m.get(id).map(v => {
-                (id, v.split(",")
-                  .map(i => {
-                    i.toInt: java.lang.Integer
-                  }).asInstanceOf[java.lang.Object])
-              })
-            }
-        }
-        case VCFHeaderLineType.String => {
-          (m: Map[String, String]) =>
-            {
-              // don't need to force to the java type, as String in scala is
-              // an alias for java.lang.String
-              m.get(id).map(v => (id, v.split(",").asInstanceOf[java.lang.Object]))
-            }
-        }
-      }
+      multiValueExtractor(id, multiValueFromString(id, headerLine.getType, flagError))
     }
   }
 

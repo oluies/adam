@@ -22,7 +22,7 @@ jobs:
       # ruff and ty are pinned so a new release cannot fail an unrelated PR.
       - name: Python checks
         env:
-          PY: scripts/fastq-interleaver.py scripts/test_fastq_interleaver.py adam-python/setup.py adam-python/bdgenomics/adam/find_adam_home.py adam-python/bdgenomics/adam/converters.py adam-python/tests/converters_test.py
+          PY: scripts/fastq-interleaver.py scripts/test_fastq_interleaver.py adam-python/setup.py adam-python/bdgenomics/adam/find_adam_home.py adam-python/bdgenomics/adam/converters.py adam-python/tests/converters_test.py adam-python/tests/find_adam_home_test.py
         run: |
           uvx ruff@0.17.4 check $PY
           uvx ruff@0.17.4 format --check $PY

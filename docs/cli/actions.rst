@@ -46,14 +46,15 @@ fall into several general categories:
 
 -  General options:
 
-   -  ``-cache``: If provided, the results of intermediate stages will
-      be cached. This is necessary to avoid recomputation if running
-      multiple transformations (e.g., Indel realignment, BQSR, etc) back
-      to back.
-   -  ``-storage_level``: Along with ``-cache``, this can be used to set
-      the Spark `persistance
-      level <http://spark.apache.org/docs/latest/programming-guide.html#which-storage-level-to-choose>`__
-      for cached data. If not provided, this defaults to ``MEM_ONLY``.
+   -  ``-no_cache``: By default, the input of each stage that reads its
+      input twice (BQSR, sorting) is cached until the output is saved, so
+      expensive earlier stages such as INDEL realignment are not
+      recomputed. This flag turns caching off. ``-cache`` is accepted for
+      compatibility and is the default.
+   -  ``-storage_level``: Sets the Spark `persistence
+      level <https://spark.apache.org/docs/latest/rdd-programming-guide.html#which-storage-level-to-choose>`__
+      for cached data. Defaults to ``MEMORY_AND_DISK_SER``, which spills to
+      disk rather than recomputing when memory runs short.
    -  ``-stringency``: Sets the validation stringency for various
       operations. Defaults to ``LENIENT.`` See `validation
       stringency <#validation>`__ for more details.

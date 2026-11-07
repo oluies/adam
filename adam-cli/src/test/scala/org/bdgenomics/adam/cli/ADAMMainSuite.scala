@@ -22,6 +22,7 @@ import com.google.inject.{ AbstractModule, Guice }
 import net.codingwell.scalaguice.ScalaModule
 import net.codingwell.scalaguice.InjectorExtensions._
 import org.bdgenomics.adam.cli.ADAMMain.defaultCommandGroups
+import org.bdgenomics.utils.cli.{ BDGCommand, BDGCommandCompanion }
 import org.scalatest.FunSuite
 
 class ADAMMainSuite extends FunSuite {
@@ -125,5 +126,47 @@ class ADAMMainSuite extends FunSuite {
     val out = stream.toString()
     assert(out.contains("Usage"))
     assert(out.contains("NEW"))
+  }
+
+  private def run(groups: List[CommandGroup], args: String*): String = {
+    val stream = new ByteArrayOutputStream()
+    Console.withOut(stream) {
+      new ADAMMain(groups)(args.toArray)
+    }
+    stream.toString()
+  }
+
+  /** A command that records the arguments it ran with instead of starting Spark. */
+  private object Recorder extends BDGCommandCompanion {
+    val commandName = "record"
+    val commandDescription = "records its arguments"
+    var ran: Option[Seq[String]] = None
+
+    def apply(cmdLine: Array[String]): BDGCommand = new BDGCommand {
+      val companion = Recorder
+      def run(): Unit = ran = Some(cmdLine.toSeq)
+    }
+  }
+
+  test("print the version for --version and -version") {
+    for (flag <- Seq("--version", "-version")) {
+      val out = run(defaultCommandGroups, flag)
+      assert(out.contains("ADAM version:"), flag)
+      assert(out.contains("Built for: Apache Spark"), flag)
+      assert(!out.contains("Usage"), flag)
+    }
+  }
+
+  test("print the commands for an unknown command") {
+    val out = run(defaultCommandGroups, "no-such-command")
+    assert(out.contains("Usage"))
+    assert(out.contains("transformAlignments"))
+  }
+
+  test("run the named command with the remaining arguments") {
+    Recorder.ran = None
+    val out = run(List(CommandGroup("TEST", List(Recorder))), "record", "a", "-parquet_logging_level", "INFO")
+    assert(Recorder.ran === Some(Seq("a", "-parquet_logging_level", "INFO")))
+    assert(!out.contains("Usage"))
   }
 }

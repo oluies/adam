@@ -128,56 +128,65 @@ private[feature] object Features {
    * @return the specified feature builder
    */
   def assignAttributes(attributes: Seq[(String, String)], f: Feature.Builder): Feature.Builder = {
-    // initialize empty builder list fields
+    val gathered = new Gathered()
+    attributes.foreach {
+      case (key, value) => reservedKeys.get(key) match {
+        case Some(assign) => assign(f, gathered, value)
+        // unrecognized key, save to attributes
+        case None         => gathered.remaining += key -> value
+      }
+    }
+    gathered.setOn(f)
+    f
+  }
+
+  /** The list and map fields of a feature, gathered from repeated attributes. */
+  private class Gathered {
     val aliases = new ListBuffer[String]()
     val notes = new ListBuffer[String]()
     val parentIds = new ListBuffer[String]()
     val dbxrefs = new ListBuffer[Dbxref]()
     val ontologyTerms = new ListBuffer[OntologyTerm]()
-
-    // set id, name, target, gap, derivesFrom, and isCircular
-    // and populate aliases, notes, parentIds, dbxrefs, and ontologyTerms
-    // from attributes if specified
+    // any duplicate keys are lost here, last one in wins
     val remaining = new LinkedHashMap[String, String]
-    attributes.foreach(entry =>
-      entry._1 match {
-        // reserved keys in GFF3 specification
-        case "ID"            => f.setFeatureId(entry._2)
-        case "Name"          => f.setName(entry._2)
-        case "Target"        => f.setTarget(entry._2)
-        case "Gap"           => f.setGap(entry._2)
-        case "Derives_from"  => f.setDerivesFrom(entry._2)
-        case "Is_circular"   => f.setCircular(entry._2.toBoolean)
-        // sampleId information
-        case "sampleId"      => f.setSampleId(entry._2)
-        case "Alias"         => aliases += entry._2
-        case "Note"          => notes += entry._2
-        case "Parent"        => parentIds += entry._2
-        case "Dbxref"        => toDbxref(entry._2).foreach(dbxrefs += _)
-        case "Ontology_term" => toOntologyTerm(entry._2).foreach(ontologyTerms += _)
-        // commonly used keys in GTF/GFF2, e.g. via Ensembl
-        case "gene_id"       => f.setGeneId(entry._2)
-        case "transcript_id" => f.setTranscriptId(entry._2)
-        case "exon_id"       => f.setExonId(entry._2)
-        case "protein_id"    => f.setProteinId(entry._2)
-        // unrecognized key, save to attributes
-        case _               => remaining += entry
-      }
-    )
 
-    // set list fields if non-empty
-    if (aliases.nonEmpty) f.setAliases(aliases.asJava)
-    if (notes.nonEmpty) f.setNotes(notes.asJava)
-    if (parentIds.nonEmpty) f.setParentIds(parentIds.asJava)
-    if (dbxrefs.nonEmpty) f.setDbxrefs(dbxrefs.asJava)
-    if (ontologyTerms.nonEmpty) f.setOntologyTerms(ontologyTerms.asJava)
-
-    // set remaining attributes if non-empty;
-    // any duplicate keys are lost at this point, last one in wins
-    if (remaining.nonEmpty) f.setAttributes(remaining.asJava)
-
-    f
+    /** Sets each non-empty field on the builder. */
+    def setOn(f: Feature.Builder): Unit = {
+      setIfNonEmpty(aliases)(f.setAliases)
+      setIfNonEmpty(notes)(f.setNotes)
+      setIfNonEmpty(parentIds)(f.setParentIds)
+      setIfNonEmpty(dbxrefs)(f.setDbxrefs)
+      setIfNonEmpty(ontologyTerms)(f.setOntologyTerms)
+      if (remaining.nonEmpty) f.setAttributes(remaining.asJava)
+    }
   }
+
+  private def setIfNonEmpty[T](values: ListBuffer[T])(set: java.util.List[T] => Any): Unit = {
+    if (values.nonEmpty) set(values.asJava)
+  }
+
+  /** How each reserved attribute key is assigned to a feature. */
+  private val reservedKeys: Map[String, (Feature.Builder, Gathered, String) => Unit] = Map(
+    // reserved keys in GFF3 specification
+    "ID" -> ((f, _, v) => f.setFeatureId(v)),
+    "Name" -> ((f, _, v) => f.setName(v)),
+    "Target" -> ((f, _, v) => f.setTarget(v)),
+    "Gap" -> ((f, _, v) => f.setGap(v)),
+    "Derives_from" -> ((f, _, v) => f.setDerivesFrom(v)),
+    "Is_circular" -> ((f, _, v) => f.setCircular(v.toBoolean)),
+    // sampleId information
+    "sampleId" -> ((f, _, v) => f.setSampleId(v)),
+    "Alias" -> ((_, g, v) => g.aliases += v),
+    "Note" -> ((_, g, v) => g.notes += v),
+    "Parent" -> ((_, g, v) => g.parentIds += v),
+    "Dbxref" -> ((_, g, v) => toDbxref(v).foreach(g.dbxrefs += _)),
+    "Ontology_term" -> ((_, g, v) => toOntologyTerm(v).foreach(g.ontologyTerms += _)),
+    // commonly used keys in GTF/GFF2, e.g. via Ensembl
+    "gene_id" -> ((f, _, v) => f.setGeneId(v)),
+    "transcript_id" -> ((f, _, v) => f.setTranscriptId(v)),
+    "exon_id" -> ((f, _, v) => f.setExonId(v)),
+    "protein_id" -> ((f, _, v) => f.setProteinId(v))
+  )
 
   /**
    * Gather values from various feature fields into a sequence of attribute key value pairs.
