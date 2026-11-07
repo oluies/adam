@@ -628,12 +628,12 @@ private[read] class RealignIndels(
         (minScore, minPos)
       } else {
         val qualityScore = sumMismatchQualityIgnoreCigar(read, reference, qualities, minScore, i)
-        val (newMinScore, newMinPos) = if (qualityScore <= minScore) {
-          (qualityScore, i)
+        // no tuple for the new minimum: this runs for every offset of every read
+        if (qualityScore <= minScore) {
+          sweep(i + 1, upTo, qualityScore, i)
         } else {
-          (minScore, minPos)
+          sweep(i + 1, upTo, minScore, minPos)
         }
-        sweep(i + 1, upTo, newMinScore, newMinPos)
       }
     }
 

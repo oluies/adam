@@ -47,6 +47,18 @@ object MdTag {
 
   private val digitPattern = new Regex("\\d+")
 
+  /**
+   * NumericRange.contains, without boxing the position. A unit-step range,
+   * which is every range an MdTag builds, contains exactly its bounds.
+   */
+  private def rangeContains(range: NumericRange[Long], pos: Long): Boolean = {
+    if (range.step == 1L) {
+      range.start <= pos && (pos < range.end || (range.isInclusive && pos == range.end))
+    } else {
+      range.contains(pos)
+    }
+  }
+
   // for description, see base enum in adam schema
   private val basesPattern = new Regex("[AaGgCcTtNnUuKkMmRrSsWwBbVvHhDdXxYy]+")
 
@@ -571,7 +583,7 @@ case class MdTag(
    * @return True if base matches reference. False means that the base may be either a mismatch or a deletion.
    */
   def isMatch(pos: Long): Boolean = {
-    matches.exists(_.contains(pos))
+    matches.exists(MdTag.rangeContains(_, pos))
   }
 
   /**
@@ -581,7 +593,7 @@ case class MdTag(
    * @return True if base matches reference. False means that the base may be either a mismatch or a deletion.
    */
   def isMatch(pos: ReferencePosition): Boolean = {
-    matches.exists(_.contains(pos.pos))
+    isMatch(pos.pos)
   }
 
   /**

@@ -136,8 +136,12 @@ private[read] object BaseQualityRecalibration {
   /**
    * The new (position, CIGAR element, index in CIGAR element, base index)
    * after a step of the residue inclusion walk in computeResiduesToInclude.
+   * A case class, not a tuple, so the position is not boxed on every base.
    */
-  private type ResidueWalkStep = (Long, CigarElement, Int, Int)
+  private case class ResidueWalkStep(pos: Long,
+                                     cigarElem: CigarElement,
+                                     cigarIdx: Int,
+                                     baseIdx: Int)
 
   /**
    * Steps over a hard clip. We must either be at the start or the end of the
@@ -148,7 +152,7 @@ private[read] object BaseQualityRecalibration {
                                readCigar: java.util.Iterator[CigarElement],
                                baseIdx: Int): ResidueWalkStep = {
     assert(baseIdx == 0)
-    (currentPos, readCigar.next, 0, 0)
+    ResidueWalkStep(currentPos, readCigar.next, 0, 0)
   }
 
   /**
@@ -159,7 +163,7 @@ private[read] object BaseQualityRecalibration {
                                    readCigar: java.util.Iterator[CigarElement],
                                    currentCigarElem: CigarElement,
                                    baseIdx: Int): ResidueWalkStep = {
-    (currentPos + currentCigarElem.getLength,
+    ResidueWalkStep(currentPos + currentCigarElem.getLength,
       readCigar.next,
       0,
       baseIdx)
@@ -192,12 +196,12 @@ private[read] object BaseQualityRecalibration {
     // start position, since a soft clip implies that this base
     // is not part of the local alignment
     if (readCigar.hasNext) {
-      (currentPos, readCigar.next, 0, baseIdxEnd + 1)
+      ResidueWalkStep(currentPos, readCigar.next, 0, baseIdxEnd + 1)
     } else {
       // we cannot pop off the next cigar element when we are at the
       // end of the read, so fake it
       assert(baseIdxEnd >= readSequence.length - 1, baseIdxEnd)
-      (currentPos, currentCigarElem, 0, baseIdxEnd + 1)
+      ResidueWalkStep(currentPos, currentCigarElem, 0, baseIdxEnd + 1)
     }
   }
 
@@ -217,7 +221,8 @@ private[read] object BaseQualityRecalibration {
                                   cigarIdx: Int,
                                   baseIdx: Int): ResidueWalkStep = {
     shouldInclude(baseIdx) = ((readSequence(baseIdx) != 'N') &&
-      !maskedSites(currentPos) &&
+      // most reads cover no known SNP: skip boxing the position for an empty set
+      !(maskedSites.nonEmpty && maskedSites(currentPos)) &&
       readQualities(baseIdx) > '!')
     isMismatch(baseIdx) = isAlignedBaseMismatch(currentCigarElem.getOperator,
       optMd,
@@ -231,7 +236,7 @@ private[read] object BaseQualityRecalibration {
       cigarIdx,
       baseIdx)
 
-    (currentPos + 1L,
+    ResidueWalkStep(currentPos + 1L,
       nextCigarElem,
       nextCigarIdx,
       baseIdx + 1)
@@ -317,7 +322,7 @@ private[read] object BaseQualityRecalibration {
                                       baseIdx: Int) {
       if (baseIdx < readSequence.length) {
         val currentCigarOp = currentCigarElem.getOperator
-        val (newPos,
+        val ResidueWalkStep(newPos,
           newCigarElem,
           newCigarIdx,
           newBaseIdx) = if (currentCigarOp == CigarOperator.H) {

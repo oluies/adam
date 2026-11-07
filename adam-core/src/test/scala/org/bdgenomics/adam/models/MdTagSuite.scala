@@ -21,6 +21,7 @@ import htsjdk.samtools.TextCigarCodec
 import org.bdgenomics.adam.rich.RichAlignment._
 import org.bdgenomics.formats.avro.Alignment
 import org.scalatest.FunSuite
+import scala.collection.immutable.NumericRange
 
 class MdTagSuite extends FunSuite {
 
@@ -628,5 +629,18 @@ class MdTagSuite extends FunSuite {
     intercept[MatchError] {
       MdTag("3^C71", 1L, TextCigarCodec.decode("4S1M1D71M"))
     }
+  }
+
+  test("isMatch agrees with NumericRange.contains for any range") {
+    val ranges = List(
+      NumericRange(10L, 15L, 1L),
+      NumericRange.inclusive(20L, 25L, 1L),
+      NumericRange(30L, 40L, 3L),
+      NumericRange(50L, 45L, 1L))
+    val tag = new MdTag(0L, ranges, Map(), Map())
+    (0L to 60L).foreach(pos => {
+      assert(tag.isMatch(pos) === ranges.exists(_.contains(pos)), pos)
+      assert(tag.isMatch(ReferencePosition("ctg", pos)) === tag.isMatch(pos), pos)
+    })
   }
 }
