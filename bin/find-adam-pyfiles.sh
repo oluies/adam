@@ -26,7 +26,7 @@ SOURCE_DIR=$(dirname ${BASH_SOURCE[0]})
 if [ -d "$ADAM_HOME/repo" ]; then
   DIST_DIR="$ADAM_HOME/repo"
 else
-  DIST_DIR="$ADAM_HOME/adam-python/dist"
+  DIST_DIR="$ADAM_HOME/adam-python/target/pyfiles"
 fi
 
 DIST_ZIP=$(ls -1 "$DIST_DIR" | grep "^bdgenomics\.adam[0-9A-Za-z\.\_\-]*\.zip$" || true)

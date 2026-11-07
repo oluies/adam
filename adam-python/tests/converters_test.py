@@ -23,7 +23,7 @@ from pathlib import Path
 from bdgenomics.adam.converters import _CONVERTER_SUFFIXES, converter_suffix
 
 _SCALA_CONVERTERS = (
-    Path(__file__).resolve().parents[3]
+    Path(__file__).resolve().parents[2]
     / "adam-apis/src/main/scala/org/bdgenomics/adam/api/java/GenomicDatasetConverters.scala"
 )
 

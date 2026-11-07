@@ -21,13 +21,14 @@ jobs:
       # Python that runs without Spark: lint, format, types and unit tests
       - name: Python checks
         env:
-          PY: scripts/fastq-interleaver.py scripts/test_fastq_interleaver.py adam-python/setup.py adam-python/bdgenomics/adam/find_adam_home.py adam-python/bdgenomics/adam/converters.py adam-python/bdgenomics/adam/converters_test.py
+          PY: scripts/fastq-interleaver.py scripts/test_fastq_interleaver.py adam-python/setup.py adam-python/bdgenomics/adam/find_adam_home.py adam-python/bdgenomics/adam/converters.py adam-python/tests/converters_test.py
         run: |
           uvx ruff check $PY
           uvx ruff format --check $PY
           uv venv .pyenv && uv pip install --python .pyenv pytest setuptools
           uvx ty check --python .pyenv $PY
-          .pyenv/bin/python -m pytest -q scripts adam-python/bdgenomics/adam/converters_test.py
+          .pyenv/bin/python -m pytest -q scripts
+          .pyenv/bin/python -m pytest -q adam-python/tests
       # CRAP scores (report only, no gate yet). crapper's Scala support is in
       # unclebob/crapper#33; pinned to that PR's commit until it is merged.
       - run: uv tool install git+https://github.com/oluies/crapper@61a91e9655bfde1751eac7fb290ea3b2ebb58067

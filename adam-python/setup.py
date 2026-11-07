@@ -54,6 +54,9 @@ in_adam = (
 
 if in_adam and not ASSEMBLY_JAR.is_file():
     sys.exit(INCORRECT_INVOCATION)
+# outside the ADAM tree, deps/ must come from a source distribution
+if not in_adam and not TEMP_PATH.is_dir():
+    sys.exit(INCORRECT_INVOCATION)
 
 if in_adam:
     try:

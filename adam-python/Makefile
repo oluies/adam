@@ -22,8 +22,8 @@ Supported targets: prepare, develop, sdist, clean, test, and pypi. All use uv
 (https://docs.astral.sh/uv/), which manages the virtualenv and Python version.
 
 The 'prepare' and 'develop' targets create .venv with an editable install of ADAM, its runtime
-requirements and its test requirements. 'develop' also zips the bdgenomics package into dist/,
-for bin/pyadam to pass to PySpark with --py-files.
+requirements and its test requirements. 'develop' also zips the bdgenomics package into
+target/pyfiles/, for bin/pyadam to pass to PySpark with --py-files.
 
 The 'clean' target undoes the effect of 'develop' and removes build output.
 
@@ -43,9 +43,12 @@ help:
 # This Makefile uses bash features like printf and <()
 SHELL=bash
 uv=uv
-tests=bdgenomics
+# bdgenomics/adam/test needs PySpark and the ADAM jar; tests/ needs neither
+tests=bdgenomics tests
 adam_version:=$(shell python3 version.py)
-pyfiles_zip:=dist/bdgenomics.adam-$(adam_version).zip
+# outside dist/, which holds only what pypi publishes
+pyfiles_zip:=target/pyfiles/bdgenomics.adam-$(adam_version).zip
+package_sources:=$(shell find bdgenomics -name '*.py' -not -path '*/test/*')
 
 green=\033[0;32m
 normal=\033[0m\n
@@ -56,12 +59,12 @@ prepare:
 	$(uv) sync
 
 develop: prepare $(pyfiles_zip)
-$(pyfiles_zip): $(shell find bdgenomics -name '*.py' -not -path '*/test/*')
-	mkdir -p dist
+$(pyfiles_zip): $(package_sources)
+	mkdir -p $(dir $@)
 	rm -f $@
-	$(uv) run python -m zipfile -c $@ bdgenomics
+	printf '%s\n' $(package_sources) | zip -q -@ $@
 clean_develop:
-	- rm -rf .venv dist/*.zip
+	- rm -rf .venv target/pyfiles
 
 sdist:
 	$(uv) build --sdist
@@ -75,8 +78,9 @@ test: prepare
 
 
 pypi: check_clean_working_copy
+	rm -rf dist
 	$(uv) build
-	$(uv) publish
+	$(uv) publish dist/*.whl dist/*.tar.gz
 clean_pypi:
 	- rm -rf build/ dist/
 
