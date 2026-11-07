@@ -270,9 +270,9 @@ object `adam-assembly` extends AdamModule {
   }
 
   /** Compares versions by their numeric parts: 2.21.2 > 2.20.0, 1.10 > 1.9. */
-  private def versionOrdering: Ordering[String] = Ordering.by[String, Iterable[Int]](
+  private def versionOrdering: Ordering[String] = Ordering.by[String, Seq[Int]](
     _.split("[.-]").toSeq.map(part => "^[0-9]+".r.findFirstIn(part).fold(0)(_.toInt))
-  )(Ordering.Implicits.seqOrdering[Seq, Int].asInstanceOf[Ordering[Iterable[Int]]])
+  )(Ordering.Implicits.seqOrdering)
 
   /** Artifact -> version on Spark's runtime classpath, Scala included. */
   def sparkProvidedVersions = Task {
