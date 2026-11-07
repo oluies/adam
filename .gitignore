@@ -21,3 +21,4 @@ build
 .RData
 .metrics
 __pycache__
+.coverage

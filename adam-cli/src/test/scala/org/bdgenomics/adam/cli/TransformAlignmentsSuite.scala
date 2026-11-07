@@ -93,40 +93,47 @@ class TransformAlignmentsSuite extends ADAMFunSuite {
 
   // ---- argument checks ----------------------------------------------------
 
-  private def rejects(flags: String*): Unit = {
+  /** Runs with input and flags, and checks the run is rejected with a message containing reason. */
+  private def rejects(input: String, reason: String, flags: String*): Unit = {
     val ex = intercept[IllegalArgumentException] {
-      TransformAlignments(Array(copyResource("unordered.sam"), tmpFile("rejected.adam")) ++ flags).run(sc)
+      TransformAlignments(Array(input, tmpFile("rejected.adam")) ++ flags).run(sc)
     }
-    assert(ex.getMessage.nonEmpty)
+    assert(ex.getMessage.contains(reason), ex.getMessage)
   }
 
+  // a Parquet-looking input, so only the force load flag can trip the check
+  private def parquetInput = tmpFile("input.adam")
+
   sparkTest("reject -aligned_read_predicate with a non-Parquet force load flag") {
-    rejects("-aligned_read_predicate", "-force_load_bam")
+    rejects(parquetInput, "-aligned_read_predicate only applies to Parquet files, but a non-Parquet force load flag",
+      "-aligned_read_predicate", "-force_load_bam")
   }
 
   sparkTest("reject -limit_projection with a non-Parquet force load flag") {
-    rejects("-limit_projection", "-force_load_fastq")
+    rejects(parquetInput, "-limit_projection only applies to Parquet files, but a non-Parquet force load flag",
+      "-limit_projection", "-force_load_fastq")
   }
 
   sparkTest("reject -aligned_read_predicate with a non-Parquet input path") {
-    rejects("-aligned_read_predicate")
+    rejects(copyResource("unordered.sam"), "-aligned_read_predicate only applies to Parquet files, but a non-Parquet input path",
+      "-aligned_read_predicate")
   }
 
   sparkTest("reject -limit_projection with a non-Parquet input path") {
-    rejects("-limit_projection")
+    rejects(copyResource("unordered.sam"), "-limit_projection only applies to Parquet files, but a non-Parquet input path",
+      "-limit_projection")
   }
 
   sparkTest("reject -aligned_read_predicate together with -region_predicate") {
     val adamPath = tmpFile("unordered.adam")
     TransformAlignments(Array("-disable_pg", copyResource("unordered.sam"), adamPath)).run(sc)
-    intercept[IllegalArgumentException] {
-      TransformAlignments(Array(adamPath, tmpFile("out.adam"),
-        "-aligned_read_predicate", "-region_predicate", "1:0-100")).run(sc)
-    }
+    rejects(adamPath, "-aligned_read_predicate and -region_predicate are mutually exclusive",
+      "-aligned_read_predicate", "-region_predicate", "1:0-100")
   }
 
   sparkTest("reject more than one sort flag") {
-    rejects("-sort_by_read_name", "-sort_by_reference_position")
+    rejects(copyResource("unordered.sam"), "only one of -sort_by_name",
+      "-sort_by_read_name", "-sort_by_reference_position")
   }
 
   test("input paths with a sequence file extension are not Parquet") {
