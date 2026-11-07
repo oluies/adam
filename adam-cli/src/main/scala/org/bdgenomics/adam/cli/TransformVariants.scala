@@ -96,11 +96,7 @@ class TransformVariants(val args: TransformVariantsArgs)
   private def maybeCoalesce(ds: VariantDataset): VariantDataset = {
     if (args.coalesce != -1) {
       info("Coalescing the number of partitions to '%d'".format(args.coalesce))
-      if (args.coalesce > ds.rdd.partitions.length || args.forceShuffle) {
-        ds.transform((rdd: RDD[Variant]) => rdd.coalesce(args.coalesce, shuffle = true))
-      } else {
-        ds.transform((rdd: RDD[Variant]) => rdd.coalesce(args.coalesce, shuffle = false))
-      }
+      ds.transform((rdd: RDD[Variant]) => Coalesce(rdd, args.coalesce, args.forceShuffle))
     } else {
       ds
     }

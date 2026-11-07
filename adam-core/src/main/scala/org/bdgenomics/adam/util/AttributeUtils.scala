@@ -86,11 +86,42 @@ object AttributeUtils {
     }
   }
 
+  // these letters should be (per the SAM file format spec) the only legal
+  // values of the tagTypeString, plus the array subtype for "B".
+  private val tagTypesByString: Map[String, TagType.Value] = Map(
+    "A" -> TagType.Character,
+    "i" -> TagType.Integer,
+    "f" -> TagType.Float,
+    "Z" -> TagType.String,
+    "H" -> TagType.ByteSequence,
+    "B:c," -> TagType.NumericByteSequence,
+    "B:i," -> TagType.NumericIntSequence,
+    "B:s," -> TagType.NumericShortSequence,
+    "B:C," -> TagType.NumericUnsignedByteSequence,
+    "B:I," -> TagType.NumericUnsignedIntSequence,
+    "B:S," -> TagType.NumericUnsignedShortSequence,
+    "B:f," -> TagType.NumericFloatSequence
+  )
+
   private def createAttribute(attrTuple: (String, String, String)): Attribute = {
     val tagName = attrTuple._1
+    val (fullTagString, valueStr) = splitTagTypeAndValue(attrTuple)
+
+    // partial lookup, as the previous partial match: unknown types throw a MatchError
+    val tagType = tagTypesByString.getOrElse(fullTagString,
+      throw new MatchError(fullTagString))
+
+    Attribute(tagName, tagType, typedStringToValue(tagType, valueStr))
+  }
+
+  /**
+   * @return The full tag type string (e.g. "i" or "B:c,") and the value
+   *   string. Array ("B") tags carry their array format in the value.
+   */
+  private def splitTagTypeAndValue(attrTuple: (String, String, String)): (String, String) = {
     val tagTypeString = attrTuple._2
 
-    val (fullTagString, valueStr) = if (tagTypeString == "B") {
+    if (tagTypeString == "B") {
       arrayRegex.findFirstMatchIn(attrTuple._3) match {
         case Some(m) => {
           ("%s:%s".format(tagTypeString, m.group(1)), m.group(2))
@@ -103,25 +134,6 @@ object AttributeUtils {
     } else {
       (tagTypeString, attrTuple._3)
     }
-
-    // partial match, but these letters should be (per the SAM file format spec)
-    // the only legal values of the tagTypeString anyway.
-    val tagType = fullTagString match {
-      case "A"    => TagType.Character
-      case "i"    => TagType.Integer
-      case "f"    => TagType.Float
-      case "Z"    => TagType.String
-      case "H"    => TagType.ByteSequence
-      case "B:c," => TagType.NumericByteSequence
-      case "B:i," => TagType.NumericIntSequence
-      case "B:s," => TagType.NumericShortSequence
-      case "B:C," => TagType.NumericUnsignedByteSequence
-      case "B:I," => TagType.NumericUnsignedIntSequence
-      case "B:S," => TagType.NumericUnsignedShortSequence
-      case "B:f," => TagType.NumericFloatSequence
-    }
-
-    Attribute(tagName, tagType, typedStringToValue(tagType, valueStr))
   }
 
   private def typedStringToValue(tagType: TagType.Value, valueStr: String): Any = {

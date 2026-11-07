@@ -134,6 +134,157 @@ private[read] object BaseQualityRecalibration {
   }
 
   /**
+   * The new (position, CIGAR element, index in CIGAR element, base index)
+   * after a step of the residue inclusion walk in computeResiduesToInclude.
+   */
+  private type ResidueWalkStep = (Long, CigarElement, Int, Int)
+
+  /**
+   * Steps over a hard clip. We must either be at the start or the end of the
+   * read; if we are at the end, we will have exited the loop already, so just
+   * check to make sure we're at base 0.
+   */
+  private def stepOverHardClip(currentPos: Long,
+                               readCigar: java.util.Iterator[CigarElement],
+                               baseIdx: Int): ResidueWalkStep = {
+    assert(baseIdx == 0)
+    (currentPos, readCigar.next, 0, 0)
+  }
+
+  /**
+   * Steps over a skipped region or deletion (N/D), which advance the reference
+   * position but consume no bases.
+   */
+  private def stepOverReferenceGap(currentPos: Long,
+                                   readCigar: java.util.Iterator[CigarElement],
+                                   currentCigarElem: CigarElement,
+                                   baseIdx: Int): ResidueWalkStep = {
+    (currentPos + currentCigarElem.getLength,
+      readCigar.next,
+      0,
+      baseIdx)
+  }
+
+  /**
+   * Steps over an insertion or soft clip (I/S), masking out the bases covered.
+   */
+  private def stepOverInsertionOrSoftClip(shouldInclude: Array[Boolean],
+                                          isMismatch: Array[Boolean],
+                                          currentPos: Long,
+                                          readSequence: Array[Char],
+                                          readCigar: java.util.Iterator[CigarElement],
+                                          currentCigarElem: CigarElement,
+                                          baseIdx: Int): ResidueWalkStep = {
+
+    // set all the overlaping bases to be ignored
+    val opLength = currentCigarElem.getLength
+    var localIdx = baseIdx
+    val baseIdxEnd = baseIdx + opLength - 1
+    while (localIdx < baseIdxEnd) {
+      shouldInclude(localIdx) = false
+      isMismatch(localIdx) = false
+      localIdx += 1
+    }
+
+    // if we have an insertion, we have already advanced
+    // the start position in the match preceding the insertion
+    // if we have a soft clip, we have no need to advance the
+    // start position, since a soft clip implies that this base
+    // is not part of the local alignment
+    if (readCigar.hasNext) {
+      (currentPos, readCigar.next, 0, baseIdxEnd + 1)
+    } else {
+      // we cannot pop off the next cigar element when we are at the
+      // end of the read, so fake it
+      assert(baseIdxEnd >= readSequence.length - 1, baseIdxEnd)
+      (currentPos, currentCigarElem, 0, baseIdxEnd + 1)
+    }
+  }
+
+  /**
+   * Steps over a single aligned base (M/X/=), recording whether it should be
+   * included and whether it is a mismatch.
+   */
+  private def stepOverAlignedBase(shouldInclude: Array[Boolean],
+                                  isMismatch: Array[Boolean],
+                                  currentPos: Long,
+                                  readSequence: Array[Char],
+                                  readQualities: Array[Char],
+                                  readCigar: java.util.Iterator[CigarElement],
+                                  currentCigarElem: CigarElement,
+                                  optMd: Option[MdTag],
+                                  maskedSites: Set[Long],
+                                  cigarIdx: Int,
+                                  baseIdx: Int): ResidueWalkStep = {
+    shouldInclude(baseIdx) = ((readSequence(baseIdx) != 'N') &&
+      !maskedSites(currentPos) &&
+      readQualities(baseIdx) > '!')
+    isMismatch(baseIdx) = isAlignedBaseMismatch(currentCigarElem.getOperator,
+      optMd,
+      currentPos)
+
+    // are we at the end of this cigar block? if so, grab a new operator
+    val (nextCigarElem,
+      nextCigarIdx) = nextCigarPosition(readSequence,
+      readCigar,
+      currentCigarElem,
+      cigarIdx,
+      baseIdx)
+
+    (currentPos + 1L,
+      nextCigarElem,
+      nextCigarIdx,
+      baseIdx + 1)
+  }
+
+  /**
+   * @return True if the aligned base at this position is a mismatch.
+   */
+  private def isAlignedBaseMismatch(currentCigarOp: CigarOperator,
+                                    optMd: Option[MdTag],
+                                    currentPos: Long): Boolean = {
+    currentCigarOp match {
+      case CigarOperator.X => true
+      case CigarOperator.M => {
+        // TODO: allow user to broadcast a ReferenceFile
+        require(optMd.isDefined,
+          "Cigar M was seen for read with undefined MD tag.")
+        !optMd.get.isMatch(currentPos)
+      }
+      case _ => {
+        // we fall through to this case IFF we see a Cigar =
+        // however, the compiler can't check this since we
+        // if/else out of the non-X/M cases above (DHSIN, disregard P)
+        // so, we treat it as a case _
+        false
+      }
+    }
+  }
+
+  /**
+   * @return The CIGAR element and index within it for the next aligned base,
+   *   grabbing a new operator if we are at the end of this CIGAR block.
+   */
+  private def nextCigarPosition(readSequence: Array[Char],
+                                readCigar: java.util.Iterator[CigarElement],
+                                currentCigarElem: CigarElement,
+                                cigarIdx: Int,
+                                baseIdx: Int): (CigarElement, Int) = {
+    if (cigarIdx == currentCigarElem.getLength - 1) {
+      if (readCigar.hasNext) {
+        (readCigar.next, 0)
+      } else {
+        // we cannot pop off the next cigar element when we are at the
+        // end of the read, so fake it
+        assert(baseIdx >= readSequence.length - 1, baseIdx.toString)
+        (currentCigarElem, cigarIdx + 1)
+      }
+    } else {
+      (currentCigarElem, cigarIdx + 1)
+    }
+  }
+
+  /**
    * @param read The read to generate residue inclusion/mismatch flags for.
    * @param maskedSites The set of positions overlapped by this read that
    *   contain known SNPs. This is the product of a join-like operation.
@@ -170,91 +321,31 @@ private[read] object BaseQualityRecalibration {
           newCigarElem,
           newCigarIdx,
           newBaseIdx) = if (currentCigarOp == CigarOperator.H) {
-          // we must either be at the start or the end of the read
-          // if we are at the end, we will have exited the loop already
-          // so just check to make sure we're at base 0
-          assert(baseIdx == 0)
-          (currentPos, readCigar.next, 0, 0)
+          stepOverHardClip(currentPos, readCigar, baseIdx)
         } else if (currentCigarOp == CigarOperator.N ||
           currentCigarOp == CigarOperator.D) {
-          (currentPos + currentCigarElem.getLength,
-            readCigar.next,
-            0,
-            baseIdx)
+          stepOverReferenceGap(currentPos, readCigar, currentCigarElem, baseIdx)
         } else if (currentCigarOp == CigarOperator.I ||
           currentCigarOp == CigarOperator.S) {
-
-          // soft clip at start needs "unclipped start pos"
-          val pos = if (currentCigarOp == CigarOperator.S &&
-            baseIdx == 0) {
-            currentPos - currentCigarElem.getLength
-          } else {
-            currentPos
-          }
-
-          // set all the overlaping bases to be ignored
-          val opLength = currentCigarElem.getLength
-          var localIdx = baseIdx
-          val baseIdxEnd = baseIdx + opLength - 1
-          while (localIdx < baseIdxEnd) {
-            shouldInclude(localIdx) = false
-            isMismatch(localIdx) = false
-            localIdx += 1
-          }
-
-          // if we have an insertion, we have already advanced
-          // the start position in the match preceding the insertion
-          // if we have a soft clip, we have no need to advance the
-          // start position, since a soft clip implies that this base
-          // is not part of the local alignment
-          if (readCigar.hasNext) {
-            (currentPos, readCigar.next, 0, baseIdxEnd + 1)
-          } else {
-            // we cannot pop off the next cigar element when we are at the
-            // end of the read, so fake it
-            assert(baseIdxEnd >= readSequence.length - 1, baseIdxEnd)
-            (currentPos, currentCigarElem, 0, baseIdxEnd + 1)
-          }
+          stepOverInsertionOrSoftClip(shouldInclude,
+            isMismatch,
+            currentPos,
+            readSequence,
+            readCigar,
+            currentCigarElem,
+            baseIdx)
         } else {
-          shouldInclude(baseIdx) = ((readSequence(baseIdx) != 'N') &&
-            !maskedSites(currentPos) &&
-            readQualities(baseIdx) > '!')
-          isMismatch(baseIdx) = currentCigarOp match {
-            case CigarOperator.X => true
-            case CigarOperator.M => {
-              // TODO: allow user to broadcast a ReferenceFile
-              require(optMd.isDefined,
-                "Cigar M was seen for read with undefined MD tag.")
-              !optMd.get.isMatch(currentPos)
-            }
-            case _ => {
-              // we fall through to this case IFF we see a Cigar =
-              // however, the compiler can't check this since we
-              // if/else out of the non-X/M cases above (DHSIN, disregard P)
-              // so, we treat it as a case _
-              false
-            }
-          }
-
-          // are we at the end of this cigar block? if so, grab a new operator
-          val (nextCigarElem,
-            nextCigarIdx) = if (cigarIdx == currentCigarElem.getLength - 1) {
-            if (readCigar.hasNext) {
-              (readCigar.next, 0)
-            } else {
-              // we cannot pop off the next cigar element when we are at the
-              // end of the read, so fake it
-              assert(baseIdx >= readSequence.length - 1, baseIdx.toString)
-              (currentCigarElem, cigarIdx + 1)
-            }
-          } else {
-            (currentCigarElem, cigarIdx + 1)
-          }
-
-          (currentPos + 1L,
-            nextCigarElem,
-            nextCigarIdx,
-            baseIdx + 1)
+          stepOverAlignedBase(shouldInclude,
+            isMismatch,
+            currentPos,
+            readSequence,
+            readQualities,
+            readCigar,
+            currentCigarElem,
+            optMd,
+            maskedSites,
+            cigarIdx,
+            baseIdx)
         }
 
         // call recursively

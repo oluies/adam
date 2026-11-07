@@ -17,6 +17,8 @@
  */
 package org.bdgenomics.adam.cli
 
+import org.bdgenomics.adam.ds.ADAMContext._
+
 import org.bdgenomics.adam.util.ADAMFunSuite
 
 class TransformVariantsSuite extends ADAMFunSuite {
@@ -53,5 +55,15 @@ class TransformVariantsSuite extends ADAMFunSuite {
     ).run(sc)
 
     checkFiles(expectedPath, actualPath)
+  }
+
+  sparkTest("coalesce the output with -coalesce and -force_shuffle_coalesce") {
+    val inputPath = copyResource("random.vcf")
+    val expected = sc.loadVariants(inputPath).rdd.count
+    for (flags <- Seq(Seq("-coalesce", "1"), Seq("-coalesce", "8"), Seq("-coalesce", "1", "-force_shuffle_coalesce"))) {
+      val outputPath = tmpFile("coalesced.adam")
+      TransformVariants(Array(inputPath, outputPath) ++ flags).run(sc)
+      assert(sc.loadVariants(outputPath).rdd.count === expected, flags.mkString(" "))
+    }
   }
 }

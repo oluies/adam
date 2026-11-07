@@ -1448,4 +1448,23 @@ class FeatureDatasetSuite extends ADAMFunSuite {
 
     assert(features.dataset.first().start.get === transformed.dataset.first().start.get)
   }
+
+  sparkTest("save picks the format from the file extension") {
+    val features = sc.loadFeatures(testFile("dvl1.200.gff3"))
+    val expected = features.rdd.count
+    for (ext <- Seq(".bed", ".gtf", ".gff", ".gff3", ".narrowPeak", ".narrowpeak", ".adam")) {
+      for (single <- Seq(false, true)) {
+        val path = tmpLocation(ext)
+        features.save(path, asSingleFile = single, disableFastConcat = false)
+        assert(sc.loadFeatures(path).rdd.count === expected, s"$ext single=$single")
+      }
+    }
+  }
+
+  sparkTest("save as interval_list from the extension") {
+    val features = sc.loadFeatures(testFile("SeqCap_EZ_Exome_v3.hg19.interval_list"))
+    val path = tmpLocation(".interval_list")
+    features.save(path, asSingleFile = true, disableFastConcat = false)
+    assert(sc.loadFeatures(path).rdd.count === features.rdd.count)
+  }
 }
