@@ -3,9 +3,13 @@
 -- ReferencePositionPair.scala). Each step names the Scala it ports.
 --
 -- Variables: input, output (ADAM alignment directories).
--- Also writes output/_duckdb_ties.parquet: the buckets whose primary reads'
--- mark depends on which of several equally scored buckets ADAM keeps, which
--- ADAM leaves to shuffle order, each with the group it was tied in.
+-- Also writes output/_duckdb_ties.parquet: the buckets whose mark depends on
+-- an order ADAM leaves to its shuffle. Either several buckets tie for the
+-- best score in a group (each listed with that group), or a mate has more
+-- than one alignment ADAM could take its position from (a primary and a
+-- supplementary alignment), which can move the bucket to another left
+-- position; every bucket at the left positions it could take is listed,
+-- with mateChoice set.
 
 LOAD avro;
 
@@ -95,15 +99,14 @@ LEFT JOIN per_bucket b
 
 -- MarkDuplicates.markBuckets: the left position prefers a forward read,
 -- the right position a reverse read (positionForStrand).
+CREATE TEMP MACRO left_position(read1, read2) AS
+    CASE WHEN read1.s = 'FORWARD' THEN read1 WHEN read2.s = 'FORWARD' THEN read2 ELSE read1 END;
+
 CREATE TEMP TABLE keyed AS
 SELECT
     b.*,
     l.library,
-    CASE
-        WHEN b.read1.s = 'FORWARD' THEN b.read1
-        WHEN b.read2.s = 'FORWARD' THEN b.read2
-        ELSE b.read1
-    END AS leftPos,
+    left_position(b.read1, b.read2) AS leftPos,
     CASE
         WHEN b.read2.s = 'REVERSE' THEN b.read2
         WHEN b.read1.s = 'REVERSE' THEN b.read1
@@ -111,6 +114,29 @@ SELECT
     END AS rightPos
 FROM buckets b
 LEFT JOIN libraries l USING (readGroupId);
+
+-- The left positions a bucket with an ambiguous mate could take: one per
+-- choice of each mate's alignment
+CREATE TEMP TABLE mate_choice_lefts AS
+WITH ambiguous AS (
+    SELECT readGroupId, readName, library FROM keyed WHERE ambiguousMates
+),
+mates AS (
+    SELECT a.readGroupId, a.readName, a.library, p.readInFragment, p.pos
+    FROM ambiguous a
+    JOIN positioned p
+        ON p.readGroupId IS NOT DISTINCT FROM a.readGroupId AND p.readName = a.readName
+    WHERE p.kind IN ('primary', 'unmapped') AND p.readInFragment IN (0, 1)
+),
+choices AS (
+    SELECT a.library, f.pos AS read1, s.pos AS read2
+    FROM ambiguous a
+    LEFT JOIN mates f
+        ON f.readGroupId IS NOT DISTINCT FROM a.readGroupId AND f.readName = a.readName AND f.readInFragment = 0
+    LEFT JOIN mates s
+        ON s.readGroupId IS NOT DISTINCT FROM a.readGroupId AND s.readName = a.readName AND s.readInFragment = 1
+)
+SELECT DISTINCT library, left_position(read1, read2) AS leftPos FROM choices;
 
 -- Group by library and left position, then by right position. A group is
 -- scored unless it holds fragments (no right position) beside pairs; in a
@@ -139,10 +165,12 @@ SELECT
     leftPos IS NOT NULL AS hasLeft,
     rightPos IS NOT NULL OR groupCount = 1 AS scored,
     (rightPos IS NOT NULL OR groupCount = 1) AND scoreRank = 1 AS kept,
-    ambiguousMates
-        OR (leftPos IS NOT NULL AND (rightPos IS NOT NULL OR groupCount = 1)
-            AND topCount > 1 AND score = topScore) AS tied,
-    hash(library, leftPos, rightPos) AS tieGroup
+    leftPos IS NOT NULL AND (rightPos IS NOT NULL OR groupCount = 1)
+        AND topCount > 1 AND score = topScore AS tied,
+    hash(library, leftPos, rightPos) AS tieGroup,
+    ambiguousMates OR EXISTS (
+        SELECT 1 FROM mate_choice_lefts m
+        WHERE m.library IS NOT DISTINCT FROM counted.library AND m.leftPos = counted.leftPos) AS mateChoice
 FROM counted;
 
 CREATE TEMP TABLE marked AS
@@ -159,13 +187,14 @@ JOIN positioned p USING (rid)
 JOIN decided d
     ON d.readGroupId IS NOT DISTINCT FROM p.readGroupId AND d.readName = p.readName;
 
+-- several files, so recalibration can work through them a few at a time
 COPY (
     SELECT r.* EXCLUDE (rid, filename, file_row_number) REPLACE (m.duplicateRead AS duplicateRead)
     FROM reads r
     JOIN marked m USING (rid)
     ORDER BY r.rid
-) TO (getvariable('output') || '/part-r-00000.parquet') (FORMAT parquet);
+) TO (getvariable('output')) (FORMAT parquet, FILE_SIZE_BYTES '32MB', FILENAME_PATTERN 'part-r-{i}', OVERWRITE_OR_IGNORE);
 
 COPY (
-    SELECT readGroupId, readName, tieGroup FROM decided WHERE tied
+    SELECT readGroupId, readName, tieGroup, mateChoice FROM decided WHERE tied OR mateChoice
 ) TO (getvariable('output') || '/_duckdb_ties.parquet') (FORMAT parquet);

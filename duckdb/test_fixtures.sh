@@ -46,7 +46,7 @@ for sam in "${fixtures[@]}"; do
   reads=$(check "$markdup" reads)
   expected=$(check "$markdup" "duplicates in expected")
   actual=$(check "$markdup" "duplicates in actual")
-  ties=$(check "$markdup" "mismatches explained by ties")
+  ties=$(( $(check "$markdup" "mismatches explained by ties") + $(check "$markdup" "mismatches explained by mate choice") ))
   bad=$(( $(check "$markdup" "mismatches not explained") + $(check "$markdup" "reads only in one output") \
         + $(check "$markdup" "duplicate keys in expected") ))
   recalibrated=$(check "$bqsr" "reads recalibrated by ADAM")
