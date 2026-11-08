@@ -16,6 +16,8 @@
 #   k % 10 == 7  two copies of the pair 9000 bases on, the second with
 #                read 1 clipped 5S95M from 5 bases on and read 2 clipped
 #                95M5S: the same unclipped five prime ends, so duplicates
+#   k % 10 == 8  a copy of the pair 12000 bases on with its first ten
+#                qualities at phred 0, which recalibration leaves out
 # usage: awk -f make_edge_cases.awk bqsr1.sam > markdup_edge_cases.sam
 # (test_fixtures.sh does this into its work directory)
 
@@ -65,5 +67,6 @@ BEGIN { FS = OFS = "\t" }
         $6 = bit($2, 16) ? "95M5S" : "5S95M"
         emit("clipB_" $1, $2, $4 + 9000 + (bit($2, 16) ? 0 : 5), $7, $8 + 9000 + (bit($2, 16) ? 5 : 0), $9)
         $6 = cigar
-    }
+    } else if (k % 10 == 8)
+        emitq("q0_" $1, $2, $4 + 12000, $7, $8 + 12000, $9, repeat("!", 10) substr($11, 11))
 }
