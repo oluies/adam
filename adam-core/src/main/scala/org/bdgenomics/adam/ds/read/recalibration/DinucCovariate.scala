@@ -65,34 +65,52 @@ private[adam] class DinucCovariate extends Covariate[(Char, Char)] {
       array
     } else {
       val current = sequence(idx)
-      // previously, this was implemented as a lookup into a set
-      // unrolling this and not using a set is 40% faster
-      //
-      // this is ugly, but as they say,
-      // "At 50, everyone has the face they deserve"
-      require(current == 'A' ||
-        current == 'C' ||
-        current == 'G' ||
-        current == 'T' ||
-        current == 'N',
-        "Saw invalid base %s. Accepted bases are A,C,G,T,N.".format(current))
-      val elem = if ((!swap && idx > 0) || (swap && idx < sequence.length - 1)) {
-        val previous = if (swap) {
-          sequence(idx + 1)
-        } else {
-          sequence(idx - 1)
-        }
-        if (previous != 'N' && current != 'N') {
-          (previous, current)
-        } else {
-          ('N', 'N')
-        }
+      requireValidBase(current)
+      array(idx) = dinuc(sequence, swap, idx, current)
+      dinucs(sequence, swap, array, idx = idx + 1)
+    }
+  }
+
+  private def requireValidBase(current: Char): Unit = {
+    // previously, this was implemented as a lookup into a set
+    // unrolling this and not using a set is 40% faster
+    //
+    // this is ugly, but as they say,
+    // "At 50, everyone has the face they deserve"
+    require(current == 'A' ||
+      current == 'C' ||
+      current == 'G' ||
+      current == 'T' ||
+      current == 'N',
+      "Saw invalid base %s. Accepted bases are A,C,G,T,N.".format(current))
+  }
+
+  /**
+   * @return The dinucleotide ending at idx, or (N, N) if there is no previous
+   *   base or either base is an N.
+   */
+  private def dinuc(sequence: String,
+                    swap: Boolean,
+                    idx: Int,
+                    current: Char): (Char, Char) = {
+    if (hasPrevious(sequence, swap, idx)) {
+      val previous = if (swap) {
+        sequence(idx + 1)
+      } else {
+        sequence(idx - 1)
+      }
+      if (previous != 'N' && current != 'N') {
+        (previous, current)
       } else {
         ('N', 'N')
       }
-      array(idx) = elem
-      dinucs(sequence, swap, array, idx = idx + 1)
+    } else {
+      ('N', 'N')
     }
+  }
+
+  private def hasPrevious(sequence: String, swap: Boolean, idx: Int): Boolean = {
+    (!swap && idx > 0) || (swap && idx < sequence.length - 1)
   }
 
   override def toCSV(cov: (Char, Char)): String = {

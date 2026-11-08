@@ -213,66 +213,98 @@ object MdTag {
    * @return MdTag corresponding to the new alignment.
    */
   private def moveAlignment(reference: String, sequence: String, newCigar: Cigar, readStart: Long): MdTag = {
-    var referencePos = 0
-    var readPos = 0
-
-    var matches: List[NumericRange[Long]] = List[NumericRange[Long]]()
-    var mismatches: Map[Long, Char] = Map[Long, Char]()
-    var deletions: Map[Long, Char] = Map[Long, Char]()
+    val aligner = new MdTagAligner(reference, sequence, readStart)
 
     // loop over cigar elements and fill sets
-    newCigar.getCigarElements.asScala.foreach(cigarElement => {
+    newCigar.getCigarElements.asScala.foreach(aligner.add)
+
+    aligner.result
+  }
+
+  /**
+   * Recalculates the matches, mismatches and deletions of a read against a
+   * reference by walking both along a new CIGAR.
+   */
+  private class MdTagAligner(reference: String, sequence: String, readStart: Long) {
+    private var referencePos = 0
+    private var readPos = 0
+
+    private var matches: List[NumericRange[Long]] = List[NumericRange[Long]]()
+    private var mismatches: Map[Long, Char] = Map[Long, Char]()
+    private var deletions: Map[Long, Char] = Map[Long, Char]()
+
+    private var rangeStart = 0L
+    private var inMatch = false
+
+    def add(cigarElement: CigarElement): Unit = {
       cigarElement.getOperator match {
-        case CigarOperator.M => {
-          var rangeStart = 0L
-          var inMatch = false
-
-          // dirty dancing to recalculate match sets
-          for (i <- 0 until cigarElement.getLength) {
-            if (reference(referencePos) ==
-              sequence(readPos)) {
-              if (!inMatch) {
-                rangeStart = referencePos.toLong
-                inMatch = true
-              }
-            } else {
-              if (inMatch) {
-                // we are no longer inside of a match, so use until
-                matches = ((rangeStart + readStart) until (referencePos.toLong + readStart)) :: matches
-                inMatch = false
-              }
-
-              mismatches += ((referencePos + readStart) -> reference(referencePos))
-            }
-
-            readPos += 1
-            referencePos += 1
-          }
-
-          // we are currently in a match, so use to
-          if (inMatch) {
-            matches = ((rangeStart + readStart) until (referencePos.toLong + readStart)) :: matches
-          }
-        }
-        case CigarOperator.D => {
-          for (i <- 0 until cigarElement.getLength) {
-            deletions += ((referencePos + readStart) -> reference(referencePos))
-
-            referencePos += 1
-          }
-        }
-        case _ => {
-          if (cigarElement.getOperator.consumesReadBases) {
-            readPos += cigarElement.getLength
-          }
-          if (cigarElement.getOperator.consumesReferenceBases) {
-            throw new IllegalArgumentException("Cannot handle operator: " + cigarElement.getOperator)
-          }
-        }
+        case CigarOperator.M =>
+          alignedBases(cigarElement.getLength)
+        case CigarOperator.D =>
+          deletedBases(cigarElement.getLength)
+        case _ =>
+          skip(cigarElement)
       }
-    })
+    }
 
-    new MdTag(readStart, matches, mismatches, deletions)
+    def result: MdTag = new MdTag(readStart, matches, mismatches, deletions)
+
+    private def alignedBases(length: Int): Unit = {
+      rangeStart = 0L
+      inMatch = false
+
+      // dirty dancing to recalculate match sets
+      for (i <- 0 until length) {
+        alignedBase()
+      }
+
+      // we are currently in a match, so use to
+      if (inMatch) {
+        closeMatch()
+      }
+    }
+
+    private def alignedBase(): Unit = {
+      if (reference(referencePos) ==
+        sequence(readPos)) {
+        if (!inMatch) {
+          rangeStart = referencePos.toLong
+          inMatch = true
+        }
+      } else {
+        if (inMatch) {
+          // we are no longer inside of a match, so use until
+          closeMatch()
+          inMatch = false
+        }
+
+        mismatches += ((referencePos + readStart) -> reference(referencePos))
+      }
+
+      readPos += 1
+      referencePos += 1
+    }
+
+    private def closeMatch(): Unit = {
+      matches = ((rangeStart + readStart) until (referencePos.toLong + readStart)) :: matches
+    }
+
+    private def deletedBases(length: Int): Unit = {
+      for (i <- 0 until length) {
+        deletions += ((referencePos + readStart) -> reference(referencePos))
+
+        referencePos += 1
+      }
+    }
+
+    private def skip(cigarElement: CigarElement): Unit = {
+      if (cigarElement.getOperator.consumesReadBases) {
+        readPos += cigarElement.getLength
+      }
+      if (cigarElement.getOperator.consumesReferenceBases) {
+        throw new IllegalArgumentException("Cannot handle operator: " + cigarElement.getOperator)
+      }
+    }
   }
 
   /**
@@ -377,6 +409,140 @@ object MdTag {
       if (cigarElement.getOperator.consumesReferenceBases) {
         throw new IllegalArgumentException("Cannot handle operator: " + cigarElement.getOperator)
       }
+    }
+  }
+
+  /**
+   * Rebuilds the reference sequence overlapping a read by walking the read
+   * along its CIGAR, filling in mismatched and deleted bases from an MD tag.
+   */
+  private class ReferenceBuilder(mdTag: MdTag, readSequence: String, withGaps: Boolean) {
+    private var referencePos = mdTag.start
+    private var readPos = 0
+    private var reference = ""
+
+    def add(cigarElement: CigarElement): Unit = {
+      cigarElement.getOperator match {
+        case CigarOperator.M | CigarOperator.EQ | CigarOperator.X =>
+          alignedBases(cigarElement.getLength)
+        case CigarOperator.D =>
+          deletedBases(cigarElement.getLength)
+        case _ =>
+          skip(cigarElement)
+      }
+    }
+
+    def result: String = reference
+
+    private def alignedBases(length: Int): Unit = {
+      // if we are a match, loop over bases in element
+      for (i <- 0 until length) {
+        // if a mismatch, get from the mismatch set, else pull from read
+        mdTag.mismatches.get(referencePos) match {
+          case Some(base) => reference += base
+          case _          => reference += readSequence(readPos)
+        }
+
+        readPos += 1
+        referencePos += 1
+      }
+    }
+
+    private def deletedBases(length: Int): Unit = {
+      if (!withGaps) {
+        // if a delete, get from the delete pool
+        for (i <- 0 until length) {
+          reference += {
+            mdTag.deletions.get(referencePos) match {
+              case Some(base) => base
+              case _          => throw new IllegalStateException("Could not find deleted base at cigar offset " + i)
+            }
+          }
+          referencePos += 1
+        }
+      } else {
+        referencePos += length
+      }
+    }
+
+    private def skip(cigarElement: CigarElement): Unit = {
+      if (cigarElement.getOperator.consumesReadBases) {
+        val insLength = cigarElement.getLength
+        if (withGaps) {
+          reference += ("_" * insLength)
+        }
+        readPos += insLength
+      }
+      if (cigarElement.getOperator.consumesReferenceBases) {
+        throw new IllegalArgumentException("Cannot handle operator: " + cigarElement.getOperator)
+      }
+    }
+  }
+
+  /**
+   * Formats an MD tag as an MD string, walking the reference positions it
+   * covers as a finite state machine.
+   */
+  private class MdTagFormatter(mdTag: MdTag) {
+    private var mdString = ""
+    private var lastWasMatch = false
+    private var lastWasDeletion = false
+    private var matchRun = 0
+
+    def add(i: Long): Unit = {
+      if (mdTag.isMatch(i)) {
+        matched()
+      } else if (mdTag.deletions.contains(i)) {
+        deleted(i)
+      } else if (mdTag.mismatches.contains(i)) {
+        mismatched(i)
+      }
+    }
+
+    // if we have more matches, write count
+    def result: String = mdString + matchCount
+
+    private def matchCount: String = if (lastWasMatch) matchRun.toString else "0"
+
+    private def matched(): Unit = {
+      if (lastWasMatch) {
+        // if in run of matches, increment count
+        matchRun += 1
+      } else {
+        // if first match, reset match count and set flag
+        matchRun = 1
+        lastWasMatch = true
+      }
+
+      // clear state
+      lastWasDeletion = false
+    }
+
+    private def deleted(i: Long): Unit = {
+      if (!lastWasDeletion) {
+        // write match count before deletion
+        mdString += matchCount
+        // add deletion caret
+        mdString += "^"
+
+        // set state
+        lastWasMatch = false
+        lastWasDeletion = true
+      }
+
+      // add deleted base
+      mdString += mdTag.deletions(i)
+    }
+
+    private def mismatched(i: Long): Unit = {
+      // write match count before mismatch
+      mdString += matchCount
+
+      mdString += mdTag.mismatches(i)
+
+      // clear state
+      lastWasMatch = false
+      lastWasDeletion = false
     }
   }
 }
@@ -496,58 +662,12 @@ case class MdTag(
                                    referenceFrom: Long,
                                    withGaps: Boolean = false): String = {
 
-    var referencePos = start
-    var readPos = 0
-    var reference = ""
+    val builder = new MdTag.ReferenceBuilder(this, readSequence, withGaps)
 
     // loop over all cigar elements
-    cigar.getCigarElements.asScala.foreach(cigarElement => {
-      cigarElement.getOperator match {
-        case CigarOperator.M | CigarOperator.EQ | CigarOperator.X => {
-          // if we are a match, loop over bases in element
-          for (i <- 0 until cigarElement.getLength) {
-            // if a mismatch, get from the mismatch set, else pull from read
-            mismatches.get(referencePos) match {
-              case Some(base) => reference += base
-              case _          => reference += readSequence(readPos)
-            }
+    cigar.getCigarElements.asScala.foreach(builder.add)
 
-            readPos += 1
-            referencePos += 1
-          }
-        }
-        case CigarOperator.D => {
-          if (!withGaps) {
-            // if a delete, get from the delete pool
-            for (i <- 0 until cigarElement.getLength) {
-              reference += {
-                deletions.get(referencePos) match {
-                  case Some(base) => base
-                  case _          => throw new IllegalStateException("Could not find deleted base at cigar offset " + i)
-                }
-              }
-              referencePos += 1
-            }
-          } else {
-            referencePos += cigarElement.getLength
-          }
-        }
-        case _ => {
-          if (cigarElement.getOperator.consumesReadBases) {
-            val insLength = cigarElement.getLength
-            if (withGaps) {
-              reference += ("_" * insLength)
-            }
-            readPos += insLength
-          }
-          if (cigarElement.getOperator.consumesReferenceBases) {
-            throw new IllegalArgumentException("Cannot handle operator: " + cigarElement.getOperator)
-          }
-        }
-      }
-    })
-
-    reference
+    builder.result
   }
 
   /**
@@ -560,55 +680,12 @@ case class MdTag(
     if (matches.isEmpty && mismatches.isEmpty && deletions.isEmpty) {
       "0"
     } else {
-      var mdString = ""
-      var lastWasMatch = false
-      var lastWasDeletion = false
-      var matchRun = 0
+      val formatter = new MdTag.MdTagFormatter(this)
 
       // loop over positions in tag - FSM for building string
-      (start to end).foreach(i => {
-        if (isMatch(i)) {
-          if (lastWasMatch) {
-            // if in run of matches, increment count
-            matchRun += 1
-          } else {
-            // if first match, reset match count and set flag
-            matchRun = 1
-            lastWasMatch = true
-          }
+      (start to end).foreach(formatter.add)
 
-          // clear state
-          lastWasDeletion = false
-        } else if (deletions.contains(i)) {
-          if (!lastWasDeletion) {
-            // write match count before deletion
-            mdString += (if (lastWasMatch) matchRun.toString else "0")
-            // add deletion caret
-            mdString += "^"
-
-            // set state
-            lastWasMatch = false
-            lastWasDeletion = true
-          }
-
-          // add deleted base
-          mdString += deletions(i)
-        } else if (mismatches.contains(i)) {
-          // write match count before mismatch
-          mdString += (if (lastWasMatch) matchRun.toString else "0")
-
-          mdString += mismatches(i)
-
-          // clear state
-          lastWasMatch = false
-          lastWasDeletion = false
-        }
-      })
-
-      // if we have more matches, write count
-      mdString += (if (lastWasMatch) matchRun.toString else "0")
-
-      mdString
+      formatter.result
     }
   }
 

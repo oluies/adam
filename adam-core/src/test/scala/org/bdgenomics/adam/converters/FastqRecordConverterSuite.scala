@@ -48,6 +48,24 @@ class FastqRecordConverterSuite extends FunSuite with PrivateMethodTester {
     converter.readNameSuffixAndIndexOfPairMustMatch(readName, isFirstOfPair)
   }
 
+  test("a read suffix that contradicts the pair flag is rejected only if STRICT") {
+    val input = "@desc/2\nATCG\n+\n1234"
+    intercept[IllegalArgumentException] {
+      converter.parseReadInFastq(input, setFirstOfPair = true)
+    }
+    for (stringency <- List(lenient, ValidationStringency.SILENT)) {
+      assert(converter.parseReadInFastq(input, setFirstOfPair = true, stringency = stringency) ===
+        ("desc", "ATCG", "1234"))
+    }
+  }
+
+  test("maybeTrimSuffix trims only a /1 or /2 suffix") {
+    assert(converter.maybeTrimSuffix("read/1") === "read")
+    assert(converter.maybeTrimSuffix("read/2") === "read")
+    assert(converter.maybeTrimSuffix("read/3") === "read/3")
+    assert(converter.maybeTrimSuffix("read") === "read")
+  }
+
   test("test parseReadInFastq, read suffix removal") {
     // simple cases
     for (
