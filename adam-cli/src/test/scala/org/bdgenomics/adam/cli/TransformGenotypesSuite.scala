@@ -82,4 +82,14 @@ class TransformGenotypesSuite extends ADAMFunSuite {
     assert(genotype.getVariant().getAnnotation() != null)
     assert(genotype.getVariant().getAnnotation().get("alleleCount") === 2)
   }
+
+  sparkTest("coalesce the output with -coalesce and -force_shuffle_coalesce") {
+    val inputPath = copyResource("random.vcf")
+    val expected = sc.loadGenotypes(inputPath).rdd.count
+    for (flags <- Seq(Seq("-coalesce", "1"), Seq("-coalesce", "8"), Seq("-coalesce", "1", "-force_shuffle_coalesce"))) {
+      val outputPath = tmpFile("coalesced.adam")
+      TransformGenotypes(Array(inputPath, outputPath) ++ flags).run(sc)
+      assert(sc.loadGenotypes(outputPath).rdd.count === expected, flags.mkString(" "))
+    }
+  }
 }

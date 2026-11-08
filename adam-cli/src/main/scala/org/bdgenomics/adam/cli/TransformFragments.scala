@@ -23,7 +23,7 @@ import org.bdgenomics.adam.cli.FileSystemUtils._
 import org.bdgenomics.adam.io.FastqRecordReader
 import org.bdgenomics.adam.ds.ADAMContext._
 import org.bdgenomics.adam.ds.ADAMSaveAnyArgs
-import org.bdgenomics.adam.ds.read.QualityScoreBin
+import org.bdgenomics.adam.ds.read.{ AlignmentDataset, QualityScoreBin }
 import org.bdgenomics.adam.ds.fragment.FragmentDataset
 import org.bdgenomics.utils.cli._
 import org.kohsuke.args4j.{ Argument, Option => Args4jOption }
@@ -112,13 +112,21 @@ class TransformFragments(protected val args: TransformFragmentsArgs) extends BDG
     })
   }
 
-  def run(sc: SparkContext) {
-    checkWriteablePath(args.outputPath, sc.hadoopConfiguration)
+  /**
+   * @return True if any of the -sort_by_* flags is set.
+   */
+  private def anySortRequested: Boolean = {
+    args.sortByReadName || args.sortByReferencePosition || args.sortByReferencePositionAndIndex
+  }
 
+  /**
+   * Validates the combination of arguments, warning or failing as needed.
+   */
+  private def validateArgs() {
     if (args.loadAsAlignments && args.saveAsAlignments) {
       warn("If loading and saving as alignments, consider using TransformAlignments instead")
     }
-    if (args.sortByReadName || args.sortByReferencePosition || args.sortByReferencePositionAndIndex) {
+    if (anySortRequested) {
       require(args.saveAsAlignments,
         "-sort_by_* flags are only valid if -save_as_alignments is given")
     }
@@ -127,19 +135,69 @@ class TransformFragments(protected val args: TransformFragmentsArgs) extends BDG
         "only one of -sort_by_read_name, -sort_by_reference_position, and -sort_by_reference_position_and_index may be specified"
       )
     }
+  }
+
+  /**
+   * @param sc The SparkContext to load with.
+   * @return The input as fragments, loaded as alignments and grouped into
+   *   fragments if requested or if a paired FASTQ file is given.
+   */
+  private def loadFragments(sc: SparkContext): FragmentDataset = {
+    val optPairedFastqFile = Option(args.pairedFastqFile)
+    if (args.loadAsAlignments || optPairedFastqFile.isDefined) {
+      sc.loadAlignments(args.inputPath, optPathName2 = optPairedFastqFile)
+        .toFragments
+    } else {
+      sc.loadFragments(args.inputPath)
+    }
+  }
+
+  /**
+   * @param alignmentRdd The alignments to sort.
+   * @return The alignments sorted as requested by the -sort_by_* flags.
+   */
+  private def maybeSort(alignmentRdd: AlignmentDataset): AlignmentDataset = {
+    if (args.sortByReadName) {
+      alignmentRdd.sortByReadName()
+    } else if (args.sortByReferencePosition) {
+      alignmentRdd.sortByReferencePosition()
+    } else if (args.sortByReferencePositionAndIndex) {
+      alignmentRdd.sortByReferencePositionAndIndex()
+    } else {
+      alignmentRdd
+    }
+  }
+
+  /**
+   * @param reads The fragments to save, as alignments or as fragments.
+   */
+  private def saveFragments(reads: FragmentDataset) {
+    if (args.saveAsAlignments) {
+      // save rdd as alignments
+      val alignmentRdd = reads.toAlignments
+
+      // prep to save
+      val finalRdd = maybeSort(alignmentRdd)
+
+      // save the file
+      finalRdd.save(args,
+        isSorted = anySortRequested)
+    } else {
+      reads.saveAsParquet(args)
+    }
+  }
+
+  def run(sc: SparkContext) {
+    checkWriteablePath(args.outputPath, sc.hadoopConfiguration)
+
+    validateArgs()
     if (args.maxReadLength > 0) {
       FastqRecordReader.setMaxReadLength(sc.hadoopConfiguration, args.maxReadLength)
     }
 
     args.configureCramFormat(sc)
 
-    val optPairedFastqFile = Option(args.pairedFastqFile)
-    val rdd = if (args.loadAsAlignments || optPairedFastqFile.isDefined) {
-      sc.loadAlignments(args.inputPath, optPathName2 = optPairedFastqFile)
-        .toFragments
-    } else {
-      sc.loadFragments(args.inputPath)
-    }
+    val rdd = loadFragments(sc)
 
     // should we bin the quality scores?
     val maybeBinnedReads = maybeBin(rdd)
@@ -147,26 +205,6 @@ class TransformFragments(protected val args: TransformFragmentsArgs) extends BDG
     // should we dedupe the reads?
     val maybeDedupedReads = maybeDedupe(maybeBinnedReads)
 
-    if (args.saveAsAlignments) {
-      // save rdd as alignments
-      val alignmentRdd = maybeDedupedReads.toAlignments
-
-      // prep to save
-      val finalRdd = if (args.sortByReadName) {
-        alignmentRdd.sortByReadName()
-      } else if (args.sortByReferencePosition) {
-        alignmentRdd.sortByReferencePosition()
-      } else if (args.sortByReferencePositionAndIndex) {
-        alignmentRdd.sortByReferencePositionAndIndex()
-      } else {
-        alignmentRdd
-      }
-
-      // save the file
-      finalRdd.save(args,
-        isSorted = args.sortByReadName || args.sortByReferencePosition || args.sortByReferencePositionAndIndex)
-    } else {
-      maybeDedupedReads.saveAsParquet(args)
-    }
+    saveFragments(maybeDedupedReads)
   }
 }

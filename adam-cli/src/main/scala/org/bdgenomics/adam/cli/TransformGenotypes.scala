@@ -100,11 +100,7 @@ class TransformGenotypes(val args: TransformGenotypesArgs)
   private def maybeCoalesce(ds: GenotypeDataset): GenotypeDataset = {
     if (args.coalesce != -1) {
       info("Coalescing the number of partitions to '%d'".format(args.coalesce))
-      if (args.coalesce > ds.rdd.partitions.length || args.forceShuffle) {
-        ds.transform((rdd: RDD[Genotype]) => rdd.coalesce(args.coalesce, shuffle = true))
-      } else {
-        ds.transform((rdd: RDD[Genotype]) => rdd.coalesce(args.coalesce, shuffle = false))
-      }
+      ds.transform((rdd: RDD[Genotype]) => Coalesce(rdd, args.coalesce, args.forceShuffle))
     } else {
       ds
     }

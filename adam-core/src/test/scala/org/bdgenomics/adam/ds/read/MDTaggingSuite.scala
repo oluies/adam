@@ -195,4 +195,51 @@ class MDTaggingSuite extends ADAMFunSuite {
       validationStringency = ValidationStringency.LENIENT)
     assert(tagger.taggedReads.collect.size === 1)
   }
+
+  /** One read on chr1 at 0-4 with sequence ACGT, against reference ACGT, carrying the given MD tag. */
+  private def taggedRead(mdTag: String): RDD[Alignment] = {
+    sc.parallelize(Seq(Alignment.newBuilder
+      .setReferenceName("chr1")
+      .setStart(0L)
+      .setEnd(4L)
+      .setSequence("ACGT")
+      .setCigar("4M")
+      .setReadMapped(true)
+      .setReadName("0")
+      .setMismatchingPositions(mdTag)
+      .build()))
+  }
+
+  private def tagging(mdTag: String, overwrite: Boolean, stringency: ValidationStringency): MDTagging = {
+    MDTagging(taggedRead(mdTag), ReferenceMap(makeFrags((chr1, 0, "ACGT"))),
+      overwriteExistingTags = overwrite, validationStringency = stringency)
+  }
+
+  sparkTest("keep a correct extant MD tag") {
+    val mdTagging = tagging("4", overwrite = false, ValidationStringency.STRICT)
+    assert(mdTagging.taggedReads.collect.map(_.getMismatchingPositions).toSeq === Seq("4"))
+    assert(mdTagging.mdTagsExtant.value === 1)
+    assert(mdTagging.incorrectMDTags.value === 0)
+  }
+
+  sparkTest("overwrite an incorrect extant MD tag when asked") {
+    val mdTagging = tagging("0A3", overwrite = true, ValidationStringency.STRICT)
+    assert(mdTagging.taggedReads.collect.map(_.getMismatchingPositions).toSeq === Seq("4"))
+    assert(mdTagging.incorrectMDTags.value === 1)
+  }
+
+  sparkTest("keep an incorrect extant MD tag under LENIENT and SILENT stringency") {
+    for (stringency <- Seq(ValidationStringency.LENIENT, ValidationStringency.SILENT)) {
+      val mdTagging = tagging("0A3", overwrite = false, stringency)
+      assert(mdTagging.taggedReads.collect.map(_.getMismatchingPositions).toSeq === Seq("0A3"), stringency)
+      assert(mdTagging.incorrectMDTags.value === 1, stringency)
+    }
+  }
+
+  sparkTest("reject an incorrect extant MD tag under STRICT stringency") {
+    val ex = intercept[org.apache.spark.SparkException] {
+      tagging("0A3", overwrite = false, ValidationStringency.STRICT).taggedReads.collect
+    }
+    assert(ex.getCause.isInstanceOf[IncorrectMDTagException] || ex.getMessage.contains("IncorrectMDTagException"))
+  }
 }

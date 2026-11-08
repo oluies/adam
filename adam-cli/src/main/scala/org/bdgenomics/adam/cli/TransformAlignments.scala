@@ -350,11 +350,7 @@ class TransformAlignments(protected val args: TransformAlignmentsArgs) extends B
   private def maybeCoalesce(ds: AlignmentDataset): AlignmentDataset = {
     if (args.coalesce != -1) {
       info("Coalescing the number of partitions to '%d'".format(args.coalesce))
-      if (args.coalesce > ds.rdd.partitions.length || args.forceShuffle) {
-        ds.transform((rdd: RDD[Alignment]) => rdd.coalesce(args.coalesce, shuffle = true))
-      } else {
-        ds.transform((rdd: RDD[Alignment]) => rdd.coalesce(args.coalesce, shuffle = false))
-      }
+      ds.transform((rdd: RDD[Alignment]) => Coalesce(rdd, args.coalesce, args.forceShuffle))
     } else {
       ds
     }

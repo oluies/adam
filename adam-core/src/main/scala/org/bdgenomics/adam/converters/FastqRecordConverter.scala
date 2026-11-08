@@ -83,18 +83,7 @@ private[adam] class FastqRecordConverter extends Serializable with Logging {
 
     val readName = lines(0).drop(1)
     if (setFirstOfPair || setSecondOfPair) {
-      try {
-        readNameSuffixAndIndexOfPairMustMatch(readName, setFirstOfPair)
-      } catch {
-        case e: IllegalArgumentException => {
-          // if we are lenient we log, strict we rethrow, silent we ignore 
-          if (stringency == ValidationStringency.STRICT) {
-            throw e
-          } else if (stringency == ValidationStringency.LENIENT) {
-            warn("Read had improper pair suffix: %s".format(e.getMessage))
-          }
-        }
-      }
+      checkPairSuffix(readName, setFirstOfPair, stringency)
     }
 
     val readNameNoSuffix = suffixRegex.replaceAllIn(readName, "")
@@ -107,20 +96,7 @@ private[adam] class FastqRecordConverter extends Serializable with Logging {
     }
 
     val readQualityScores =
-      if (stringency == ValidationStringency.STRICT) readQualityScoresRaw
-      else {
-        if (readQualityScoresRaw == "*") "B" * readSequence.length
-        else if (readQualityScoresRaw.length < readSequence.length) {
-          readQualityScoresRaw + ("B" * (readSequence.length - readQualityScoresRaw.length))
-        } else if (readQualityScoresRaw.length > readSequence.length) {
-          throw new IllegalArgumentException("Quality scores length must not be longer than read length")
-        } else readQualityScoresRaw
-      }
-
-    if (stringency == ValidationStringency.STRICT) {
-      if (readQualityScoresRaw == "*" && readSequence.length > 1)
-        throw new IllegalArgumentException(s"Fastq quality must be defined for\n $input")
-    }
+      finalQualityScores(input, readSequence, readQualityScoresRaw, stringency)
 
     require(
       readSequence.length == readQualityScores.length,
@@ -128,6 +104,64 @@ private[adam] class FastqRecordConverter extends Serializable with Logging {
     )
 
     (readNameNoSuffix, readSequence, readQualityScores)
+  }
+
+  /**
+   * Checks that the read name suffix matches the pair flag, handling a
+   * mismatch according to the validation stringency.
+   *
+   * @param readName The name of the read.
+   * @param isFirstOfPair True if this read is the first read in a pair.
+   * @param stringency STRICT rethrows, LENIENT logs, SILENT ignores.
+   */
+  private def checkPairSuffix(readName: String,
+                              isFirstOfPair: Boolean,
+                              stringency: ValidationStringency) {
+    try {
+      readNameSuffixAndIndexOfPairMustMatch(readName, isFirstOfPair)
+    } catch {
+      case e: IllegalArgumentException => {
+        // if we are lenient we log, strict we rethrow, silent we ignore 
+        if (stringency == ValidationStringency.STRICT) {
+          throw e
+        } else if (stringency == ValidationStringency.LENIENT) {
+          warn("Read had improper pair suffix: %s".format(e.getMessage))
+        }
+      }
+    }
+  }
+
+  /**
+   * @return The quality scores to use for a read: unchanged (but required to
+   *   be defined) if STRICT, else padded to the read length.
+   */
+  private def finalQualityScores(input: String,
+                                 readSequence: String,
+                                 readQualityScoresRaw: String,
+                                 stringency: ValidationStringency): String = {
+    if (stringency == ValidationStringency.STRICT) {
+      requireDefinedQualityScores(input, readSequence, readQualityScoresRaw)
+      readQualityScoresRaw
+    } else {
+      padQualityScores(readSequence, readQualityScoresRaw)
+    }
+  }
+
+  private def requireDefinedQualityScores(input: String,
+                                          readSequence: String,
+                                          readQualityScoresRaw: String) {
+    if (readQualityScoresRaw == "*" && readSequence.length > 1)
+      throw new IllegalArgumentException(s"Fastq quality must be defined for\n $input")
+  }
+
+  private def padQualityScores(readSequence: String,
+                               readQualityScoresRaw: String): String = {
+    if (readQualityScoresRaw == "*") "B" * readSequence.length
+    else if (readQualityScoresRaw.length < readSequence.length) {
+      readQualityScoresRaw + ("B" * (readSequence.length - readQualityScoresRaw.length))
+    } else if (readQualityScoresRaw.length > readSequence.length) {
+      throw new IllegalArgumentException("Quality scores length must not be longer than read length")
+    } else readQualityScoresRaw
   }
 
   private[converters] def parseReadPairInFastq(input: String): (String, String, String, String, String, String) = {
