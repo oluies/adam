@@ -50,9 +50,11 @@ shift cancels out of ADAM's formula.
 | Data | Reads | Result | ADAM | DuckDB |
 | --- | --- | --- | --- | --- |
 | HG00096 chr22, duplicate marking | 300,000 | 10,489 duplicates, identical | 6.6 s | 1.0 s |
-| HG00096 chr22, recalibration | 300,000 | 129,300 reads recalibrated, identical | 11.6 s | 7.0 s |
+| HG00096 chr22, recalibration | 300,000 | 129,300 reads recalibrated, identical | 10.1 s wall, 38.9 s CPU | 2.7 s wall, 12.6 s CPU |
 
-ADAM's times include Spark start-up, which dominates at this size.
+ADAM's times include Spark start-up, which dominates at this size: a
+`transformAlignments` that only reads and writes the same reads takes 5.4 s
+wall and 17.6 s CPU. Recalibration times are medians of three runs.
 
 Needs DuckDB 2.0 (lambdas are written `lambda x: ...`) with the `avro`
 extension, which reads ADAM's `_readGroups.avro`.

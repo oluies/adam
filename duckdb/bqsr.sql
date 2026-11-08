@@ -6,6 +6,9 @@
 -- -min_acceptable_quality, 5 by default).
 -- Not ported: -sampling_fraction, and CIGAR P operators.
 
+-- the final COPY orders its rows; nothing else needs input order kept
+SET preserve_insertion_order = false;
+
 CREATE TEMP TABLE reads AS
 SELECT row_number() OVER (ORDER BY filename, file_row_number) AS rid, *
 FROM read_parquet(getvariable('input') || '/part-*.parquet', filename = true, file_row_number = true);
@@ -13,7 +16,7 @@ FROM read_parquet(getvariable('input') || '/part-*.parquet', filename = true, fi
 -- BaseQualityRecalibration.shouldIncludeRead
 CREATE TEMP TABLE included AS
 SELECT
-    rid, readGroupId, start, cigar, sequence, qualityScores, readNegativeStrand, readInFragment,
+    rid, readGroupId, referenceName, start, cigar, sequence, qualityScores, readNegativeStrand, readInFragment,
     upper(mismatchingPositions) AS md,
     length(sequence) AS readLength
 FROM reads
@@ -65,9 +68,9 @@ CREATE TEMP TABLE cigar_bases AS
 SELECT
     rid,
     op,
-    readBefore + k AS baseIdx,
-    CASE WHEN op IN ('M', '=', 'X') THEN refBefore + k END AS refOffset,
-    CASE WHEN op IN ('M', '=', 'X') THEN mdBefore + k END AS mdOffset
+    (readBefore + k)::BIGINT AS baseIdx,
+    CASE WHEN op IN ('M', '=', 'X') THEN (refBefore + k)::BIGINT END AS refOffset,
+    CASE WHEN op IN ('M', '=', 'X') THEN (mdBefore + k)::BIGINT END AS mdOffset
 FROM (
     SELECT *, unnest(range(len)) AS k
     FROM cigar_ops
@@ -110,29 +113,36 @@ CREATE TEMP MACRO complement(b) AS
 
 CREATE TEMP MACRO dinuc(previous, current) AS
     CASE
-        WHEN previous IS NULL OR previous = 'N' OR current = 'N' THEN {'p': 'N', 'c': 'N'}
-        ELSE {'p': previous, 'c': current}
+        WHEN previous IS NULL OR previous = 'N' OR current = 'N' THEN 'NN'
+        ELSE previous || current
     END;
 
 -- CovariateSpace: one covariate key per read base. CycleCovariate counts
 -- from the read's five prime end, negated for the second read of a pair;
 -- DinucCovariate pairs each base with the one before it in sequencing
 -- order (the complement of the next base on the reverse strand).
+-- Every base comes from the CIGAR walk; ADAM fails on a read whose CIGAR
+-- does not cover its sequence.
 CREATE TEMP TABLE covariates AS
 WITH per_base AS (
     SELECT
-        i.rid,
+        c.rid,
+        c.op,
+        c.baseIdx,
+        c.mdOffset,
         i.readGroupId,
         i.readLength,
         i.readNegativeStrand,
         i.readInFragment,
-        i.start,
-        idx AS baseIdx,
-        substr(i.sequence, idx + 1, 1) AS base,
-        substr(i.qualityScores, idx + 1, 1) AS q,
-        CASE WHEN idx > 0 THEN substr(i.sequence, idx, 1) END AS before,
-        CASE WHEN idx < i.readLength - 1 THEN substr(i.sequence, idx + 2, 1) END AS after
-    FROM (SELECT *, unnest(range(readLength)) AS idx FROM included) i
+        i.referenceName,
+        i.start + c.refOffset AS pos,
+        substr(i.sequence, c.baseIdx + 1, 1) AS base,
+        substr(i.qualityScores, c.baseIdx + 1, 1) AS q,
+        CASE WHEN c.baseIdx > 0 THEN substr(i.sequence, c.baseIdx, 1) END AS before,
+        CASE WHEN c.baseIdx < i.readLength - 1 THEN substr(i.sequence, c.baseIdx + 2, 1) END AS after
+    FROM cigar_bases c
+    JOIN included i USING (rid)
+    WHERE c.baseIdx < i.readLength
 )
 SELECT
     b.rid,
@@ -150,22 +160,16 @@ SELECT
         ELSE dinuc(b.before, b.base)
     END AS dinuc,
     -- stepOverAlignedBase; inserted and clipped bases are never included
-    c.op IN ('M', '=', 'X')
-        AND b.base <> 'N'
-        AND b.q > '!'
-        AND NOT EXISTS (
-            SELECT 1 FROM known_sites s
-            WHERE s.referenceName = r.referenceName AND s.pos = b.start + c.refOffset) AS shouldInclude,
+    b.op IN ('M', '=', 'X') AND b.base <> 'N' AND b.q > '!' AND s.pos IS NULL AS shouldInclude,
     -- isAlignedBaseMismatch
-    CASE c.op
+    CASE b.op
         WHEN 'X' THEN true
-        WHEN 'M' THEN EXISTS (SELECT 1 FROM md_mismatches m WHERE m.rid = b.rid AND m.mdOffset = c.mdOffset)
-            OR c.mdOffset >= coalesce(l.mdLength, 0)
+        WHEN 'M' THEN m.mdOffset IS NOT NULL OR b.mdOffset >= coalesce(l.mdLength, 0)
         ELSE false
     END AS isMismatch
 FROM per_base b
-JOIN reads r USING (rid)
-LEFT JOIN cigar_bases c ON c.rid = b.rid AND c.baseIdx = b.baseIdx
+LEFT JOIN known_sites s ON s.referenceName = b.referenceName AND s.pos = b.pos
+LEFT JOIN md_mismatches m ON m.rid = b.rid AND m.mdOffset = b.mdOffset
 LEFT JOIN md_lengths l ON l.rid = b.rid;
 
 -- BaseQualityRecalibration.observed: totals and mismatches per covariate key
