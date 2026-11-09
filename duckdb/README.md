@@ -17,8 +17,25 @@ duckdb/run.sh bqsr marked.adam recalibrated.adam known_snps.vcf   # VCF optional
 duckdb/run.sh sort recalibrated.adam sorted.adam
 ```
 
-Not ported: INDEL realignment (keep ADAM's, between duplicate marking and
-recalibration), BQSR's `-sampling_fraction`, and CIGAR `P` operators.
+## What runs where
+
+Three preprocessing stages exist in DuckDB as well as in ADAM on Spark. ADAM
+does not call DuckDB: run these stages with `run.sh`, on ADAM's Parquet.
+
+| Step | DuckDB | ADAM on Spark |
+| --- | --- | --- |
+| SAM, BAM or CRAM to Parquet | No | Yes |
+| Sort by contig name | Yes | Yes |
+| Sort by reference dictionary order | No | Yes |
+| Duplicate marking | Yes | Yes |
+| Base quality recalibration | Yes, except `-sampling_fraction` and CIGAR `P` operators | Yes |
+| INDEL realignment | No | Yes |
+| Writing SAM or BAM, other `transformAlignments` options, variants, features, fragments, coverage, `flagstat` and the rest of the CLI | No | Yes |
+
+A full run converts with ADAM, marks duplicates in DuckDB, realigns with ADAM
+if wanted, recalibrates and sorts in DuckDB, and writes SAM or BAM with ADAM if
+needed. ADAM loads DuckDB's Parquet, but a run with realignment between the
+DuckDB stages has not been tested.
 
 ## Matching ADAM
 
