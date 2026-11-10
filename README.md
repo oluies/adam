@@ -1,8 +1,8 @@
 ADAM
 ====
 
-[![Maven Central](https://img.shields.io/maven-central/v/org.bdgenomics.adam/adam-core-spark4_2.13.svg?maxAge=600)](http://search.maven.org/#search%7Cga%7C1%7Corg.bdgenomics.adam)
-[![API Documentation](http://javadoc.io/badge/org.bdgenomics.adam/adam-core-spark4_2.13.svg?color=brightgreen&label=scaladoc)](http://javadoc.io/doc/org.bdgenomics.adam/adam-core-spark4_2.13)
+[![Maven Central](https://img.shields.io/maven-central/v/org.bdgenomics.adam/adam-core-spark4_2.13.svg?maxAge=600)](https://search.maven.org/search?q=g:org.bdgenomics.adam)
+[![API Documentation](https://javadoc.io/badge/org.bdgenomics.adam/adam-core-spark4_2.13.svg?color=brightgreen&label=scaladoc)](https://javadoc.io/doc/org.bdgenomics.adam/adam-core-spark4_2.13)
 
 # Introduction
 
@@ -38,8 +38,8 @@ This approach entails three main bottlenecks:
   3. __writing to and reading from disk__ is a major slow-down.
 
 We propose here a transformative solution for these problems, by replacing
-ad-hoc workflows by the [ADAM framework](http://bdgenomics.org/), developed
-in the [Apache Spark](http://spark.apache.org/) ecosystem.
+ad-hoc workflows by the [ADAM framework](https://bdgenomics.org/), developed
+in the [Apache Spark](https://spark.apache.org/) ecosystem.
 
 ADAM enables the high performance in-memory cluster computing functionality
 of Apache Spark on genomic data, ensuring efficient and fault-tolerant
@@ -113,16 +113,40 @@ JaCoCo agent measuring the Java classes. JaCoCo data accumulates across runs; ru
 ### Installing Spark
 
 You'll need to have a Spark release on your system and the `$SPARK_HOME` environment variable pointing at it;
-prebuilt binaries can be downloaded from the [Spark website](http://spark.apache.org/downloads.html).
+prebuilt binaries can be downloaded from the [Spark website](https://spark.apache.org/downloads.html).
 
 As of ADAM version 2.0.0, Spark version 4.0.0 or later (Scala 2.13, Java 17 or later) is required.
 
 
+## Preprocessing on DuckDB
+
+[`duckdb/`](duckdb/README.md) holds SQL ports of three of ADAM's alignment
+preprocessing stages for [DuckDB](https://duckdb.org) 2.0: sorting, duplicate
+marking and base quality recalibration. They read and write ADAM's alignment
+Parquet, so the stages can be mixed with ADAM's own; converting from
+SAM/BAM/CRAM, INDEL realignment and writing SAM/BAM stay in ADAM.
+
+```bash
+$ adam-submit -- transformAlignments in.bam reads.adam   # SAM/BAM/CRAM to Parquet, once
+$ duckdb/run.sh markdup reads.adam marked.adam
+$ duckdb/run.sh bqsr marked.adam recalibrated.adam known_snps.vcf   # VCF optional
+$ duckdb/run.sh sort recalibrated.adam sorted.adam
+```
+
+`duckdb/test_fixtures.sh` checks the output against ADAM's on six fixtures. On
+HG00096 chr22 at 30x (10.6 million reads) the DuckDB outputs match ADAM's, and
+with the whole machine DuckDB marks duplicates in 43 s against ADAM's 161 s,
+sorts in 3.5 s against 81 s, and recalibrates in about the same wall time
+(287 s against 305 s). See [`duckdb/README.md`](duckdb/README.md) for the
+benchmark setup, what is not ported, and how ties are handled. The scripts need
+the DuckDB CLI 2.0 with the `avro` extension.
+
+
 # Documentation
 
-ADAM's documentation is available at http://adam.readthedocs.io.
+ADAM's documentation is available at https://adam.readthedocs.io.
 
-ADAM's core API documentation is available at http://javadoc.io/doc/org.bdgenomics.adam/adam-core-spark4_2.13.
+ADAM's core API documentation is available at https://javadoc.io/doc/org.bdgenomics.adam/adam-core-spark4_2.13.
 
 # The ADAM/Big Data Genomics Ecosystem
 
@@ -137,10 +161,10 @@ There are a number of tools built using ADAM's core APIs:
 * [Avocado](https://github.com/bigdatagenomics/avocado) - Avocado is a distributed
   variant caller built on top of ADAM for germline and somatic calling.
 * [Cannoli](https://github.com/bigdatagenomics/cannoli) - ADAM
-  [Pipe](http://adam.readthedocs.io/en/latest/api/pipes/) API wrappers for bioinformatics
+  [Pipe](https://adam.readthedocs.io/en/latest/api/pipes/) API wrappers for bioinformatics
   tools, (e.g.,
   [BWA](https://github.com/lh3/bwa),
-  [bowtie2](http://bowtie-bio.sourceforge.net/bowtie2/index.shtml),
+  [bowtie2](https://bowtie-bio.sourceforge.net/bowtie2/index.shtml),
   [FreeBayes](https://github.com/ekg/freebayes))
 * [DECA](https://github.com/bigdatagenomics/deca) - DECA is a reimplementation of the
   XHMM copy number variant caller on top of ADAM.
@@ -148,7 +172,7 @@ There are a number of tools built using ADAM's core APIs:
   for running GWAS/eQTL tests on large genotype/phenotype datasets using ADAM.
 * [Lime](https://github.com/bigdatagenomics/lime) - Lime provides a
   parallel implementation of genomic set theoretic primitives using the ADAM
-  [region join](http://adam.readthedocs.io/en/latest/api/joins/) API.
+  [region join](https://adam.readthedocs.io/en/latest/api/joins/) API.
 * [Mango](https://github.com/bigdatagenomics/mango) - Mango is a library for
   visualizing large scale genomics data with interactive latencies.
 
