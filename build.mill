@@ -75,11 +75,14 @@ trait AdamModule extends SbtModule with PublishModule with ScoverageModule {
 
   def pomSettings = PomSettings(
     description = "A fast, scalable genome analysis system",
-    organization = "org.bdgenomics.adam",
-    url = "https://github.com/bigdatagenomics/adam",
+    organization = "io.github.oluies",
+    url = "https://github.com/oluies/adam",
     licenses = Seq(License.`Apache-2.0`),
-    versionControl = VersionControl.github("bigdatagenomics", "adam"),
-    developers = Seq(Developer("heuermh", "Michael L Heuer", "https://github.com/heuermh"))
+    versionControl = VersionControl.github("oluies", "adam"),
+    developers = Seq(
+      Developer("oluies", "Örjan Lundberg", "https://github.com/oluies"),
+      Developer("heuermh", "Michael L Heuer", "https://github.com/heuermh")
+    )
   )
 
   def scalacOptions = Seq("-unchecked", "-deprecation", "-release", "17")

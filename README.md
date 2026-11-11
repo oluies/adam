@@ -1,8 +1,9 @@
 ADAM
 ====
 
-[![Maven Central](https://img.shields.io/maven-central/v/org.bdgenomics.adam/adam-core-spark4_2.13.svg?maxAge=600)](https://search.maven.org/search?q=g:org.bdgenomics.adam)
-[![API Documentation](https://javadoc.io/badge/org.bdgenomics.adam/adam-core-spark4_2.13.svg?color=brightgreen&label=scaladoc)](https://javadoc.io/doc/org.bdgenomics.adam/adam-core-spark4_2.13)
+[![CI](https://github.com/oluies/adam/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/oluies/adam/actions/workflows/ci.yml)
+[![Maven Central](https://img.shields.io/maven-central/v/io.github.oluies/adam-core-spark4_2.13.svg?maxAge=600)](https://central.sonatype.com/namespace/io.github.oluies)
+[![API Documentation](https://javadoc.io/badge/io.github.oluies/adam-core-spark4_2.13.svg?color=brightgreen&label=scaladoc)](https://javadoc.io/doc/io.github.oluies/adam-core-spark4_2.13)
 
 > **This is a fork** of [bigdatagenomics/adam](https://github.com/bigdatagenomics/adam).
 > It differs from upstream in these ways:
@@ -12,7 +13,9 @@ ADAM
 >   See [`duckdb/README.md`](duckdb/README.md) and
 >   [Preprocessing on DuckDB](#preprocessing-on-duckdb) below.
 > - **Build and platform:** Mill instead of Maven; Spark 4, Scala 2.13 and
->   Java 17. Artifacts are `adam-*-spark4_2.13`, version `2.0.0-SNAPSHOT`.
+>   Java 17. Artifacts are published under the groupId `io.github.oluies` as
+>   `adam-*-spark4_2.13`, version `2.0.0-SNAPSHOT`. Code packages are still
+>   `org.bdgenomics.adam`.
 > - **Bug fixes:** Kryo record padding, the ignored Parquet compression codec,
 >   `PrintADAM` output and feature filters, each with a test.
 > - **Performance:** multi-pass stages of `transformAlignments` cached by
@@ -112,7 +115,7 @@ ADAM builds with [Mill](https://mill-build.org). The `./mill` launcher script in
 the repository downloads Mill and the JDK it needs, so only `curl` or `wget` is required.
 
 ```bash
-$ git clone https://github.com/bigdatagenomics/adam.git
+$ git clone https://github.com/oluies/adam.git
 $ cd adam
 $ ./mill __.compile               # compile all modules
 $ ./mill __.test                  # run all tests
@@ -165,7 +168,7 @@ the DuckDB CLI 2.0 with the `avro` extension.
 
 ADAM's documentation is available at https://adam.readthedocs.io.
 
-ADAM's core API documentation is available at https://javadoc.io/doc/org.bdgenomics.adam/adam-core-spark4_2.13.
+ADAM's core API documentation is available at https://javadoc.io/doc/io.github.oluies/adam-core-spark4_2.13.
 
 # The ADAM/Big Data Genomics Ecosystem
 
