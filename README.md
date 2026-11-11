@@ -4,6 +4,25 @@ ADAM
 [![Maven Central](https://img.shields.io/maven-central/v/org.bdgenomics.adam/adam-core-spark4_2.13.svg?maxAge=600)](https://search.maven.org/search?q=g:org.bdgenomics.adam)
 [![API Documentation](https://javadoc.io/badge/org.bdgenomics.adam/adam-core-spark4_2.13.svg?color=brightgreen&label=scaladoc)](https://javadoc.io/doc/org.bdgenomics.adam/adam-core-spark4_2.13)
 
+> **This is a fork** of [bigdatagenomics/adam](https://github.com/bigdatagenomics/adam).
+> It differs from upstream in these ways:
+>
+> - **DuckDB preprocessing:** SQL ports of sorting, duplicate marking and base
+>   quality recalibration that run on ADAM's Parquet and match ADAM's output.
+>   See [`duckdb/README.md`](duckdb/README.md) and
+>   [Preprocessing on DuckDB](#preprocessing-on-duckdb) below.
+> - **Build and platform:** Mill instead of Maven; Spark 4, Scala 2.13 and
+>   Java 17. Artifacts are `adam-*-spark4_2.13`, version `2.0.0-SNAPSHOT`.
+> - **Bug fixes:** Kryo record padding, the ignored Parquet compression codec,
+>   `PrintADAM` output and feature filters, each with a test.
+> - **Performance:** multi-pass stages of `transformAlignments` cached by
+>   default (about 2x faster pipeline), INDEL realignment no longer recomputed,
+>   and less boxing in realignment and BQSR (79% less allocation).
+> - **Code quality:** scoverage and JaCoCo coverage, CRAP scores via
+>   [crapper](https://github.com/unclebob/crapper), and refactoring that took
+>   functions at CRAP 10 or more from 105 to 21. Python is upgraded to 3.11+.
+> - **CI:** runs on pushes to `master` as well as on pull requests.
+
 # Introduction
 
 ADAM is a library and command line tool that enables the use of [Apache
