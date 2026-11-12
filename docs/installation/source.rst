@@ -6,7 +6,7 @@ launcher script in the repository downloads Mill and the JDK it needs.
 
 .. code:: bash
 
-    git clone https://github.com/bigdatagenomics/adam.git
+    git clone https://github.com/oluies/adam.git
     cd adam
     ./mill __.compile
     ./mill __.test

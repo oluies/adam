@@ -48,12 +48,14 @@ From ADAM version 0.32.0, Spark 3 artifacts are also available:
       <version>${adam.version}</version>
     </dependency>
 
-From ADAM version 2.0.0, Spark 4 (Scala 2.13) artifacts are available:
+From ADAM version 2.0.0, Spark 4 (Scala 2.13) artifacts are available from
+the `oluies/adam <https://github.com/oluies/adam>`__ fork, under the groupId
+``io.github.oluies``:
 
 ::
 
     <dependency>
-      <groupId>org.bdgenomics.adam</groupId>
+      <groupId>io.github.oluies</groupId>
       <artifactId>adam-core-spark4_2.13</artifactId>
       <version>${adam.version}</version>
     </dependency>
