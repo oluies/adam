@@ -8,7 +8,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    if: ${{ github.repository == 'bigdatagenomics/adam' }}
+    if: ${{ github.repository == 'oluies/adam' }}
     env:
       SPARK_LOCAL_IP: localhost
     steps:
