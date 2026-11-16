@@ -4,6 +4,12 @@ ADAM
 [![CI](https://github.com/oluies/adam/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/oluies/adam/actions/workflows/ci.yml)
 [![Maven Central](https://img.shields.io/maven-central/v/io.github.oluies/adam-core-spark4_2.13.svg?maxAge=600)](https://central.sonatype.com/namespace/io.github.oluies)
 [![API Documentation](https://javadoc.io/badge/io.github.oluies/adam-core-spark4_2.13.svg?color=brightgreen&label=scaladoc)](https://javadoc.io/doc/io.github.oluies/adam-core-spark4_2.13)
+[![Snapshot](https://img.shields.io/maven-metadata/v?metadataUrl=https%3A%2F%2Fcentral.sonatype.com%2Frepository%2Fmaven-snapshots%2Fio%2Fgithub%2Foluies%2Fadam-core-spark4_2.13%2Fmaven-metadata.xml&label=snapshot&color=orange)](#using-snapshot-builds-of-this-fork)
+
+**Package:** `io.github.oluies:adam-core-spark4_2.13:2.0.0-SNAPSHOT` (also
+`adam-apis`, `adam-cli`, `adam-assembly`, …), from the
+[Maven Central snapshot repository](https://central.sonatype.com/repository/maven-snapshots/).
+Spark 4, Scala 2.13, Java 17.
 
 > **This is a fork** of [bigdatagenomics/adam](https://github.com/bigdatagenomics/adam).
 > It differs from upstream in these ways:
