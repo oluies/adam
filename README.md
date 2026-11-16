@@ -4,6 +4,12 @@ ADAM
 [![CI](https://github.com/oluies/adam/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/oluies/adam/actions/workflows/ci.yml)
 [![Maven Central](https://img.shields.io/maven-central/v/io.github.oluies/adam-core-spark4_2.13.svg?maxAge=600)](https://central.sonatype.com/namespace/io.github.oluies)
 [![API Documentation](https://javadoc.io/badge/io.github.oluies/adam-core-spark4_2.13.svg?color=brightgreen&label=scaladoc)](https://javadoc.io/doc/io.github.oluies/adam-core-spark4_2.13)
+[![Snapshot](https://img.shields.io/maven-metadata/v?metadataUrl=https%3A%2F%2Fcentral.sonatype.com%2Frepository%2Fmaven-snapshots%2Fio%2Fgithub%2Foluies%2Fadam-core-spark4_2.13%2Fmaven-metadata.xml&label=snapshot&color=orange)](#using-snapshot-builds-of-this-fork)
+
+**Package:** `io.github.oluies:adam-core-spark4_2.13:2.0.0-SNAPSHOT` (also
+`adam-apis`, `adam-cli`, `adam-assembly`, …), from the
+[Maven Central snapshot repository](https://central.sonatype.com/repository/maven-snapshots/).
+Spark 4, Scala 2.13, Java 17.
 
 > **This is a fork** of [bigdatagenomics/adam](https://github.com/bigdatagenomics/adam).
 > It differs from upstream in these ways:
@@ -16,6 +22,8 @@ ADAM
 >   Java 17. Artifacts are published under the groupId `io.github.oluies` as
 >   `adam-*-spark4_2.13`, version `2.0.0-SNAPSHOT`. Code packages are still
 >   `org.bdgenomics.adam`.
+>   Snapshots are published on every push to `master`; see
+>   [Using snapshot builds of this fork](#using-snapshot-builds-of-this-fork).
 > - **Bug fixes:** Kryo record padding, the ignored Parquet compression codec,
 >   `PrintADAM` output and feature filters, each with a test.
 > - **Performance:** multi-pass stages of `transformAlignments` cached by
@@ -108,6 +116,51 @@ $ docker pull quay.io/biocontainers/adam:{tag}
 ```
 
 Find `{tag}` on the tag search page, https://quay.io/repository/biocontainers/adam?tab=tags
+
+## Using snapshot builds of this fork
+
+Conda, Homebrew and Docker install upstream ADAM. This fork publishes a
+snapshot of every module to the Maven Central snapshot repository on each push
+to `master`, under the groupId `io.github.oluies`, as `adam-*-spark4_2.13`
+version `2.0.0-SNAPSHOT`.
+
+Maven:
+
+```xml
+<repositories>
+  <repository>
+    <id>central-snapshots</id>
+    <url>https://central.sonatype.com/repository/maven-snapshots/</url>
+    <releases><enabled>false</enabled></releases>
+    <snapshots><enabled>true</enabled></snapshots>
+  </repository>
+</repositories>
+
+<dependency>
+  <groupId>io.github.oluies</groupId>
+  <artifactId>adam-core-spark4_2.13</artifactId>
+  <version>2.0.0-SNAPSHOT</version>
+</dependency>
+```
+
+sbt:
+
+```scala
+resolvers += "Central snapshots" at "https://central.sonatype.com/repository/maven-snapshots/"
+libraryDependencies += "io.github.oluies" %% "adam-core-spark4" % "2.0.0-SNAPSHOT"
+```
+
+Spark shell:
+
+```bash
+$ spark-shell \
+    --repositories https://central.sonatype.com/repository/maven-snapshots/ \
+    --packages io.github.oluies:adam-core-spark4_2.13:2.0.0-SNAPSHOT
+```
+
+Snapshots change with every push, so pin a timestamped version such as
+`2.0.0-20261116.092234-1` when you need a reproducible build. The versions are
+listed in the repository's `maven-metadata.xml`.
 
 ## Building from Source
 
